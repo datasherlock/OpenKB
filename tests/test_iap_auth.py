@@ -197,3 +197,36 @@ def test_missing_identity_when_admin_enforced(monkeypatch, tmp_path):
     # Anonymous request without IAP header or token
     resp = client.post("/api/v1/add", data={"kb": "test-kb"})
     assert resp.status_code == 401
+
+
+def test_kb_prompts_endpoint(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENKB_KB_ROOT", str(tmp_path))
+    kb_dir = tmp_path / "test-kb"
+    (kb_dir / ".openkb").mkdir(parents=True, exist_ok=True)
+    (kb_dir / "wiki").mkdir(parents=True, exist_ok=True)
+
+    # Write prompts.yaml
+    prompts_yaml = (
+        "prompts:\n"
+        "  - title: Finance Use Cases\n"
+        "    prompt: How many use cases does Finance have\n"
+        "  - Can you create an exec update\n"
+    )
+    (kb_dir / "prompts.yaml").write_text(prompts_yaml, encoding="utf-8")
+
+    client = _client(monkeypatch, admin_emails="jeromerajan@google.com")
+    colleague_headers = {
+        "x-goog-authenticated-user-email": "accounts.google.com:colleague@google.com"
+    }
+
+    # Accessible to non-admin colleague (read-only allowed)
+    resp = client.get("/api/v1/kb/prompts?kb=test-kb", headers=colleague_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "prompts" in data
+    assert len(data["prompts"]) == 2
+    assert data["prompts"][0]["title"] == "Finance Use Cases"
+    assert data["prompts"][0]["prompt"] == "How many use cases does Finance have"
+    assert data["prompts"][1]["title"] == "Can you create an exec update"
+    assert data["prompts"][1]["prompt"] == "Can you create an exec update"
+

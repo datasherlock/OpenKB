@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from "react-router"
 import { useTranslation } from "react-i18next"
 import { MessageSquare, Library, Settings2, Plus } from "lucide-react"
 import { listKbs, type KbSummary } from "@/api/kb"
+import { useAuth } from "@/hooks/useAuth"
 import { cn } from "@/lib/utils"
 import CreateKbDialog from "@/components/CreateKbDialog"
 
@@ -49,6 +50,7 @@ function NavItem({
 export default function AppSidebar() {
   const navigate = useNavigate()
   const { t } = useTranslation("common")
+  const { isAdmin } = useAuth()
   const [kbs, setKbs] = useState<KbSummary[]>([])
 
   // Fetch on mount, and re-fetch whenever a KB is created elsewhere (the
@@ -86,38 +88,42 @@ export default function AppSidebar() {
       {/* 主导航（不含设置，设置已下沉到底部） */}
       <nav className="space-y-0.5">
         <NavItem to="/" end icon={<MessageSquare className="w-4 h-4" />} label={t("nav.home")} />
-        <NavItem to="/kb" icon={<Library className="w-4 h-4" />} label={t("nav.kbs")} />
+        {isAdmin && <NavItem to="/kb" icon={<Library className="w-4 h-4" />} label={t("nav.kbs")} />}
       </nav>
 
-      {/* 知识库列表 */}
-      <div className="mt-5 px-3 flex items-center justify-between">
-        <span className="text-[12px] font-semibold text-muted-foreground tracking-wide">
-          {t("nav.kbs")}
-        </span>
-        <CreateKbDialog>
-          <button
-            className="text-muted-foreground hover:text-foreground transition-colors"
-            title={t("actions.newKb")}
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </button>
-        </CreateKbDialog>
-      </div>
-      <div className="mt-1 space-y-0.5 overflow-y-auto">
-        {kbs.map((kb, i) => (
-          <button
-            key={kb.name}
-            onClick={() => navigate(`/kb/${encodeURIComponent(kb.name)}`)}
-            className="w-full flex items-center gap-2.5 px-3 h-9 rounded-apple-sm text-[13.5px] text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors duration-fast ease-out-apple active:scale-[0.98]"
-          >
-            <span className={cn("w-2 h-2 rounded-full shrink-0", dotFor(i))} />
-            <span className="truncate">{kb.name}</span>
-            <span className="ml-auto text-[11px] text-muted-foreground font-mono2 tabular-nums">
-              {kb.document_count}
+      {/* 知识库列表 (仅管理员可见) */}
+      {isAdmin && (
+        <>
+          <div className="mt-5 px-3 flex items-center justify-between">
+            <span className="text-[12px] font-semibold text-muted-foreground tracking-wide">
+              {t("nav.kbs")}
             </span>
-          </button>
-        ))}
-      </div>
+            <CreateKbDialog>
+              <button
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                title={t("actions.newKb")}
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </CreateKbDialog>
+          </div>
+          <div className="mt-1 space-y-0.5 overflow-y-auto">
+            {kbs.map((kb, i) => (
+              <button
+                key={kb.name}
+                onClick={() => navigate(`/kb/${encodeURIComponent(kb.name)}`)}
+                className="w-full flex items-center gap-2.5 px-3 h-9 rounded-apple-sm text-[13.5px] text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors duration-fast ease-out-apple active:scale-[0.98]"
+              >
+                <span className={cn("w-2 h-2 rounded-full shrink-0", dotFor(i))} />
+                <span className="truncate">{kb.name}</span>
+                <span className="ml-auto text-[11px] text-muted-foreground font-mono2 tabular-nums">
+                  {kb.document_count}
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       <div className="flex-1" />
 

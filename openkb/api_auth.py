@@ -160,3 +160,4 @@ async def whoami_endpoint(
         "authenticated": bool(email or has_token),
         "admin_enforced": bool(admin_emails),
     }
+

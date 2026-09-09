@@ -96,3 +96,20 @@ export function getKbConfig(kb: string): Promise<KbConfig> {
 export function patchKbConfig(kb: string, patch: KbConfigPatch): Promise<KbConfig> {
   return apiFetch<KbConfig>("/api/v1/kb/config", { method: "PATCH", body: { kb, ...patch } })
 }
+
+export interface PresetPrompt {
+  title: string
+  prompt: string
+  description?: string
+}
+
+export interface KbPromptsResponse {
+  prompts: PresetPrompt[]
+}
+
+export async function getKbPrompts(kb?: string): Promise<PresetPrompt[]> {
+  const url = kb ? `/api/v1/kb/prompts?kb=${encodeURIComponent(kb)}` : "/api/v1/kb/prompts"
+  const res = await apiFetch<KbPromptsResponse>(url)
+  return res.prompts ?? []
+}
+

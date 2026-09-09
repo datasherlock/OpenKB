@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react"
-import { Routes, Route, useParams } from "react-router"
+import { Routes, Route, useParams, Navigate } from "react-router"
 import { MotionConfig } from "motion/react"
 import { KeyRound, Loader2 } from "lucide-react"
 import AppSidebar from "@/components/AppSidebar"
+import { useAuth } from "@/hooks/useAuth"
 import TitleBar from "@/components/TitleBar"
 import { ThemeToggle } from "@/lib/theme"
 import { LanguageToggle } from "@/lib/language"
@@ -126,6 +127,7 @@ function ConnectionDialog({
 
 export default function App() {
   const [authOpen, setAuthOpen] = useState(false)
+  const { isAdmin, loading } = useAuth()
 
   const isDesktopShell =
     typeof (window as { __OPENKB_DESKTOP__?: unknown }).__OPENKB_DESKTOP__ !== "undefined"
@@ -173,8 +175,14 @@ export default function App() {
                   DIFFERENT saved session, so switching /chat/A→/chat/B still
                   shows the right one. */}
               <Route path="/chat/:id" element={<ChatSession />} />
-              <Route path="/kb" element={<KbList />} />
-              <Route path="/kb/:id" element={<KbDetailRoute />} />
+              <Route
+                path="/kb"
+                element={!loading && !isAdmin ? <Navigate to="/" replace /> : <KbList />}
+              />
+              <Route
+                path="/kb/:id"
+                element={!loading && !isAdmin ? <Navigate to="/" replace /> : <KbDetailRoute />}
+              />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </main>

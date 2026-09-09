@@ -10,6 +10,9 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import litellm
+from openkb.litellm_patch import apply_litellm_patches
+
+apply_litellm_patches()
 from agents import set_tracing_disabled
 from dotenv import load_dotenv
 from fastapi import (

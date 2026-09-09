@@ -46,6 +46,10 @@ logging.getLogger("LiteLLM").addFilter(_SuppressLiteLLMPreloadWarnings())
 import litellm
 
 litellm.suppress_debug_info = True
+
+from openkb.litellm_patch import apply_litellm_patches
+
+apply_litellm_patches()
 from dotenv import load_dotenv
 
 from openkb.agent.compiler import DEFAULT_COMPILE_CONCURRENCY, compile_long_doc

@@ -7,3 +7,7 @@ try:
     __version__ = _version("openkb")
 except PackageNotFoundError:
     __version__ = "0.0.0+unknown"
+
+from openkb.litellm_patch import apply_litellm_patches
+
+apply_litellm_patches()

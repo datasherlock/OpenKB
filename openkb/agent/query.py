@@ -15,7 +15,10 @@ from openkb.agent.tools import (
     write_kb_file,
 )
 from openkb.config import LlmCredentialBundle, resolve_model_settings
+from openkb.litellm_patch import apply_litellm_patches
 from openkb.schema import get_agents_md
+
+apply_litellm_patches()
 
 MAX_TURNS = 50
 

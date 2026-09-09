@@ -287,6 +287,26 @@ def resolve_litellm_settings(config: dict) -> dict[str, Any]:
     return settings
 
 
+def resolve_cloud_sync_config(config: dict) -> dict[str, Any] | None:
+    """Resolve optional ``cloud_sync:`` mapping with bucket, enabled, auto_push, auto_pull."""
+    raw = config.get("cloud_sync")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        logger.warning("config: 'cloud_sync' must be a mapping, got %s", type(raw).__name__)
+        return None
+    bucket = raw.get("bucket")
+    if not bucket or not isinstance(bucket, str) or not bucket.strip():
+        logger.warning("config: 'cloud_sync.bucket' must be a non-empty string")
+        return None
+    return {
+        "enabled": bool(raw.get("enabled", True)),
+        "bucket": bucket.strip(),
+        "auto_push": bool(raw.get("auto_push", True)),
+        "auto_pull": bool(raw.get("auto_pull", False)),
+    }
+
+
 # Process-wide extra headers for LLM requests, resolved from the active KB's
 # config by the CLI entry points (cli._setup_llm_key). LLM call sites read it
 # via get_extra_headers() so the value doesn't have to be threaded through

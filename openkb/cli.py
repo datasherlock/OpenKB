@@ -1167,8 +1167,15 @@ def add(ctx, path, from_pageindex_cloud):
                 f"Unsupported file type: {target.suffix}. "
                 f"Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
             )
-            return
         add_single_file(target, kb_dir)
+
+    try:
+        from openkb.cloud_sync import run_sync_hook
+        ok, msg = run_sync_hook(kb_dir, "push")
+        if ok and "disabled" not in msg and "defined" not in msg:
+            click.echo(f"Cloud sync: {msg}")
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Post-add cloud sync failed: %s", exc)
 
 
 def _stream_to_tty() -> bool:
@@ -1992,6 +1999,14 @@ def recompile(ctx, doc_name, all_docs, dry_run, yes, refresh_schema):
     # ``openkb.agent.compiler.compile_*`` and see the call.
     from openkb.agent import compiler
 
+    try:
+        from openkb.cloud_sync import run_sync_hook
+        ok, msg = run_sync_hook(kb_dir, "pull")
+        if ok and "disabled" not in msg and "defined" not in msg:
+            click.echo(f"Pre-compile cloud sync: {msg}")
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Pre-recompile cloud sync failed: %s", exc)
+
     recompiled = 0
     skipped = 0
     total = len(targets)
@@ -2070,6 +2085,13 @@ def recompile(ctx, doc_name, all_docs, dry_run, yes, refresh_schema):
 
     click.echo(f"\nDone: recompiled {recompiled}, skipped {skipped}.")
     append_log(wiki_dir, "recompile", f"recompiled {recompiled}, skipped {skipped}")
+    try:
+        from openkb.cloud_sync import run_sync_hook
+        ok, msg = run_sync_hook(kb_dir, "push")
+        if ok and "disabled" not in msg and "defined" not in msg:
+            click.echo(f"Post-compile cloud sync: {msg}")
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Post-recompile cloud sync failed: %s", exc)
 
 
 async def iter_recompile(
@@ -2297,6 +2319,11 @@ async def iter_recompile(
                 skipped += 1
 
         append_log(wiki_dir, "recompile", f"recompiled {recompiled}, skipped {skipped}")
+        try:
+            from openkb.cloud_sync import run_sync_hook
+            run_sync_hook(kb_dir, "push")
+        except Exception as exc:
+            logging.getLogger(__name__).warning("Post-iter_recompile cloud sync failed: %s", exc)
         yield {
             "event": "final",
             "status": "done",
@@ -2305,6 +2332,57 @@ async def iter_recompile(
             "skipped": skipped,
             "docs": docs,
         }
+
+
+@cli.command("sync")
+@click.option("--push", is_flag=True, default=False, help="Push local KB to Google Cloud Storage bucket.")
+@click.option("--pull", is_flag=True, default=False, help="Pull remote GCS bucket into local KB.")
+@click.option("--dry-run", is_flag=True, default=False, help="Preview sync actions without transferring data.")
+@click.option("--delete", is_flag=True, default=False, help="Delete unmatched destination objects.")
+@click.pass_context
+def sync(ctx, push, pull, dry_run, delete):
+    """Synchronize knowledge base with configured Google Cloud Storage bucket."""
+    kb_dir = _find_kb_dir(ctx.obj.get("kb_dir_override"))
+    if kb_dir is None:
+        click.echo("No knowledge base found. Run `openkb init` first.")
+        return
+
+    from openkb.config import resolve_effective_config
+    config = resolve_effective_config(kb_dir)[0]
+    cloud_sync = config.get("cloud_sync")
+    if not cloud_sync or not isinstance(cloud_sync, dict):
+        click.echo("No 'cloud_sync' configured in .openkb/config.yaml.")
+        click.echo("Add:\ncloud_sync:\n  bucket: gs://your-bucket-name/kb-path\n  enabled: true")
+        return
+
+    bucket = cloud_sync.get("bucket")
+    if not bucket:
+        click.echo("No bucket specified in cloud_sync configuration.")
+        return
+
+    from openkb.cloud_sync import sync_kb_push, sync_kb_pull
+
+    # Default to push if neither is explicitly passed
+    action_push = push or (not push and not pull)
+    action_pull = pull
+
+    if action_pull:
+        click.echo(f"Pulling from {bucket} into {kb_dir}...")
+        ok, msg = sync_kb_pull(kb_dir, bucket, dry_run=dry_run, delete_unmatched=delete)
+        if ok:
+            click.echo(click.style(f"[OK] Pull complete: {msg}", fg="green"))
+        else:
+            click.echo(click.style(f"[ERROR] Pull failed: {msg}", fg="red"))
+            ctx.exit(1)
+
+    if action_push:
+        click.echo(f"Pushing from {kb_dir} to {bucket}...")
+        ok, msg = sync_kb_push(kb_dir, bucket, dry_run=dry_run, delete_unmatched=delete)
+        if ok:
+            click.echo(click.style(f"[OK] Push complete: {msg}", fg="green"))
+        else:
+            click.echo(click.style(f"[ERROR] Push failed: {msg}", fg="red"))
+            ctx.exit(1)
 
 
 @cli.command()

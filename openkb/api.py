@@ -47,6 +47,7 @@ from openkb.api_helpers import (
 from openkb.api_auth import (
     auth_router, require_read_permission, require_write_permission, security,
 )
+from fastapi.security import HTTPAuthorizationCredentials
 from openkb.api_kbs import _list_knowledge_bases
 from openkb.api_kbs_router import kbs_router
 from openkb.api_models import (
@@ -87,6 +88,7 @@ from openkb.api_models import (
 )
 from openkb.api_output import output_router
 from openkb.api_pages_router import pages_router
+from openkb.api_sync_router import sync_router
 from openkb.cli import (
     get_kb_list,
     get_kb_status,
@@ -161,6 +163,7 @@ def create_app() -> FastAPI:
     app.include_router(kbs_router)
     app.include_router(pages_router)
     app.include_router(documents_router)
+    app.include_router(sync_router)
 
     @app.get("/api/v1/kbs", response_model=KbListResponse)
     async def list_kbs_endpoint(

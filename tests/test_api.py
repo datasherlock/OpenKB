@@ -1884,7 +1884,7 @@ def test_graph_html_endpoint_returns_self_contained_html(monkeypatch, kb_dir):
     assert response.headers["content-type"].startswith("text/html")
     body = response.text
     # Self-contained template rendered, placeholder substituted with real data.
-    assert "<title>openkb · knowledge graph</title>" in body
+    assert "<title>LBG · knowledge graph</title>" in body
     assert "__GRAPH_DATA__" not in body
     assert "concepts/a" in body  # a node id from the injected graph JSON
 
@@ -1897,7 +1897,7 @@ def test_graph_html_endpoint_empty_wiki_still_renders(monkeypatch, kb_dir):
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
-    assert "<title>openkb · knowledge graph</title>" in response.text
+    assert "<title>LBG · knowledge graph</title>" in response.text
 
 
 def test_output_endpoint_serves_output_html(monkeypatch, kb_dir):
@@ -2138,7 +2138,9 @@ def test_skill_archive_endpoint_returns_zip(monkeypatch, kb_dir):
 # ---------------------------------------------------------------------------
 
 
-def test_kb_config_get_returns_fields_and_key_presence(monkeypatch, kb_dir):
+def test_kb_config_get_returns_fields_and_key_presence(monkeypatch, kb_dir, tmp_path):
+    monkeypatch.setattr("openkb.config.GLOBAL_CONFIG_PATH", tmp_path / "global.yaml")
+    monkeypatch.setattr("openkb.config.GLOBAL_CONFIG_DIR", tmp_path)
     client = _client(monkeypatch)
     kb = _use_named_kb(monkeypatch, kb_dir)
     (kb_dir / ".env").write_text("LLM_API_KEY=secret123\n", encoding="utf-8")

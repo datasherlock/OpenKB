@@ -104,10 +104,23 @@ _KNOWN_PROVIDER_KEYS = (
     "DASHSCOPE_API_KEY",
 )
 
-# Providers that authenticate via OAuth device flow (subscription login
-# handled by LiteLLM itself) — no API key env var is needed, so the
-# missing-key warning would be a false alarm for them.
-_OAUTH_PROVIDERS = {"chatgpt", "github_copilot"}
+# Providers that authenticate via OAuth device flow, cloud credentials (ADC, IAM),
+# or run locally — no API key env var is needed, so the missing-key warning
+# would be a false alarm for them.
+_KEYLESS_OR_CLOUD_PROVIDERS = {
+    "chatgpt",
+    "github_copilot",
+    "vertex_ai",
+    "vertex_ai_beta",
+    "bedrock",
+    "sagemaker",
+    "watsonx",
+    "ollama",
+    "ollama_chat",
+    "lm_studio",
+    "hosted_vllm",
+    "vllm",
+}
 
 
 def _extract_provider(model: str) -> str | None:
@@ -206,7 +219,7 @@ def _setup_llm_key(kb_dir: Path | None = None) -> None:
         # so the warning is skipped for them.
         check_keys = (f"{provider.upper()}_API_KEY",) if provider else _KNOWN_PROVIDER_KEYS
         has_key = any(os.environ.get(k) for k in check_keys)
-        if not has_key and provider not in _OAUTH_PROVIDERS:
+        if not has_key and provider not in _KEYLESS_OR_CLOUD_PROVIDERS:
             click.echo(
                 "Warning: No LLM API key found. Set one of:\n"
                 f"  1. {kb_dir / '.env' if kb_dir else '<kb_dir>/.env'} — LLM_API_KEY=sk-...\n"

@@ -50,6 +50,8 @@ dependencies = [
     "prompt_toolkit==3.0.52",
     "rich==15.0.0",
     "portalocker==3.2.0",
+    "google-auth>=2.0.0",
+    "requests>=2.28.0",
 ]
 
 [project.urls]

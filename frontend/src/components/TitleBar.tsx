@@ -60,7 +60,7 @@ function ConnectionStatus() {
 
 export default function TitleBar() {
   const title = useTitle()
-  const heading = `OpenKB Studio${title ? ` — ${title}` : ""}`
+  const heading = `LBG${title ? ` — ${title}` : ""}`
 
   // Desktop shell: fake traffic-lights + a draggable title region.
   if (isDesktopShell) {

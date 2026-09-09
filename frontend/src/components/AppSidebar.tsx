@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { NavLink, useNavigate } from "react-router"
 import { useTranslation } from "react-i18next"
-import { MessageSquare, Library, Settings2, Plus } from "lucide-react"
+import { MessageSquare, Library, Settings2, Plus, Waypoints } from "lucide-react"
 import { listKbs, type KbSummary } from "@/api/kb"
 import { useAuth } from "@/hooks/useAuth"
 import { cn } from "@/lib/utils"
@@ -34,15 +34,15 @@ function NavItem({
       end={end}
       className={({ isActive }) =>
         cn(
-          "flex items-center gap-2.5 px-3 h-9 rounded-apple-sm text-[14px] font-medium transition-colors duration-fast ease-out-apple active:scale-[0.98]",
+          "flex items-center gap-2.5 px-3 h-9 rounded-apple-sm text-[13.5px] font-medium transition-colors duration-fast ease-out-apple active:scale-[0.98]",
           isActive
-            ? "bg-accent text-accent-foreground shadow-sm"
+            ? "bg-accent-brand text-white shadow-apple-sm"
             : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
         )
       }
     >
       {icon}
-      {label}
+      <span>{label}</span>
     </NavLink>
   )
 }
@@ -88,6 +88,7 @@ export default function AppSidebar() {
       {/* 主导航（不含设置，设置已下沉到底部） */}
       <nav className="space-y-0.5">
         <NavItem to="/" end icon={<MessageSquare className="w-4 h-4" />} label={t("nav.home")} />
+        <NavItem to="/graph" icon={<Waypoints className="w-4 h-4" />} label={t("nav.graph")} />
         {isAdmin && <NavItem to="/kb" icon={<Library className="w-4 h-4" />} label={t("nav.kbs")} />}
       </nav>
 

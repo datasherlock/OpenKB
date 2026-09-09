@@ -27,6 +27,7 @@
   },
   "nav": {
     "home": "Home",
+    "graph": "Knowledge Graph",
     "kbs": "Knowledge bases",
     "settings": "Settings"
   },

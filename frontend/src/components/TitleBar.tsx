@@ -18,6 +18,7 @@ function useTitle(): string {
   const { t } = useTranslation("common")
   const titles: Record<string, string> = {
     "/": t("nav.home"),
+    "/graph": t("nav.graph"),
     "/kb": t("nav.kbs"),
     "/settings": t("nav.settings"),
   }

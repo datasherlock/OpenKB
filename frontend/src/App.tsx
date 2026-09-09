@@ -24,6 +24,7 @@ import Home from "@/pages/Home"
 import ChatSession from "@/pages/ChatSession"
 import KbList from "@/pages/KbList"
 import KbDetail from "@/pages/KbDetail"
+import GraphView from "@/pages/GraphView"
 import Settings from "@/pages/Settings"
 
 /** Remount KbDetail per KB so its page/tree state resets cleanly on nav. */
@@ -175,6 +176,7 @@ export default function App() {
                   DIFFERENT saved session, so switching /chat/A→/chat/B still
                   shows the right one. */}
               <Route path="/chat/:id" element={<ChatSession />} />
+              <Route path="/graph" element={<GraphView />} />
               <Route
                 path="/kb"
                 element={!loading && !isAdmin ? <Navigate to="/" replace /> : <KbList />}

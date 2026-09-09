@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import hmac
 import json
 import os
 import time
@@ -12,10 +11,11 @@ from typing import Any, AsyncIterator
 
 from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 from starlette.staticfiles import StaticFiles
+
+from openkb.api_auth import require_bearer_token, security
 
 from openkb.agent.chat import build_chat_session_agent, iter_chat_turn_events
 from openkb.agent.chat_session import ChatSession, load_session
@@ -51,7 +51,6 @@ from openkb.config import (
 from openkb.log import append_log
 from openkb.watch_service import WatchRegistry
 
-security = HTTPBearer(auto_error=False)
 UPLOAD_CHUNK_BYTES = 1024 * 1024
 MAX_UPLOAD_FILE_BYTES = int(os.environ.get("OPENKB_MAX_UPLOAD_FILE_BYTES", str(100 * 1024 * 1024)))
 MAX_UPLOAD_REQUEST_BYTES = int(
@@ -98,29 +97,6 @@ def _mount_web_ui(app: FastAPI) -> None:
     web_dir = Path(__file__).resolve().parent / "web"
     if web_dir.is_dir():
         app.mount("/", StaticFiles(directory=str(web_dir), html=True), name="web-ui")
-
-
-def require_bearer_token(
-    credentials: HTTPAuthorizationCredentials | None = Depends(security),
-) -> None:
-    expected = os.environ.get("OPENKB_API_TOKEN")
-    if not expected:
-        # Auth is opt-in. With no OPENKB_API_TOKEN configured the API is open —
-        # the local-first default so `openkb-api` + open the browser just works
-        # with no config. A deployer who exposes the server sets
-        # OPENKB_API_TOKEN to require a bearer token (main() warns when bound to
-        # a non-loopback host without one).
-        return
-    if credentials is None or credentials.scheme.lower() != "bearer":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Bearer token required.",
-        )
-    if not hmac.compare_digest(credentials.credentials, expected):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid bearer token.",
-        )
 
 
 def _resolve_kb(value: str) -> Path:

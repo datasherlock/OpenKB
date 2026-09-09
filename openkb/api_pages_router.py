@@ -12,7 +12,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from starlette.concurrency import run_in_threadpool
 
-from openkb.api_helpers import _resolve_kb, require_bearer_token
+from openkb.api_auth import require_read_permission, require_write_permission
+from openkb.api_helpers import _resolve_kb
 from openkb.api_models import (
     PageDeleteRequest,
     PageDeleteResponse,
@@ -31,7 +32,7 @@ pages_router = APIRouter()
 @pages_router.post("/api/v1/page", response_model=PageResponse)
 async def page_endpoint(
     request: PageRequest,
-    _: None = Depends(require_bearer_token),
+    _: None = Depends(require_read_permission),
 ) -> PageResponse:
     kb_dir = _resolve_kb(request.kb)
     wiki_dir = (kb_dir / "wiki").resolve()
@@ -48,7 +49,7 @@ async def page_endpoint(
 @pages_router.post("/api/v1/page/delete", response_model=PageDeleteResponse)
 async def delete_page_endpoint(
     request: PageDeleteRequest,
-    _: None = Depends(require_bearer_token),
+    _: None = Depends(require_write_permission),
 ) -> PageDeleteResponse:
     kb_dir = _resolve_kb(request.kb)
     try:
@@ -65,7 +66,7 @@ async def delete_page_endpoint(
 @pages_router.post("/api/v1/page/links", response_model=PageLinksResponse)
 async def page_links_endpoint(
     request: PageLinksRequest,
-    _: None = Depends(require_bearer_token),
+    _: None = Depends(require_read_permission),
 ) -> PageLinksResponse:
     kb_dir = _resolve_kb(request.kb)
     try:
@@ -80,7 +81,7 @@ async def page_links_endpoint(
 @pages_router.put("/api/v1/page", response_model=PageEditResponse)
 async def edit_page_endpoint(
     request: PageEditRequest,
-    _: None = Depends(require_bearer_token),
+    _: None = Depends(require_write_permission),
 ) -> PageEditResponse:
     kb_dir = _resolve_kb(request.kb)
     try:

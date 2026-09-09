@@ -17,7 +17,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 
-from openkb.api_helpers import _resolve_kb, require_bearer_token
+from openkb.api_auth import require_read_permission
+from openkb.api_helpers import _resolve_kb
 
 output_router = APIRouter()
 
@@ -28,7 +29,7 @@ _VIEWABLE_SUFFIXES = (".html", ".htm")
 async def output_file_endpoint(
     kb: str = Query(...),
     path: str = Query(..., min_length=1),
-    _: None = Depends(require_bearer_token),
+    _: None = Depends(require_read_permission),
 ) -> FileResponse:
     kb_dir = _resolve_kb(kb)
     root = kb_dir.resolve()

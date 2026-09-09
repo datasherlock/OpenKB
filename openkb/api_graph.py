@@ -12,7 +12,8 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import HTMLResponse
 from starlette.concurrency import run_in_threadpool
 
-from openkb.api_helpers import _resolve_kb, require_bearer_token
+from openkb.api_auth import require_read_permission
+from openkb.api_helpers import _resolve_kb
 from openkb.api_models import GraphRequest, GraphResponse
 
 graph_router = APIRouter()
@@ -21,7 +22,7 @@ graph_router = APIRouter()
 @graph_router.post("/api/v1/graph", response_model=GraphResponse)
 async def graph_endpoint(
     request: GraphRequest,
-    _: None = Depends(require_bearer_token),
+    _: None = Depends(require_read_permission),
 ) -> GraphResponse:
     kb_dir = _resolve_kb(request.kb)
     from openkb.visualize import build_graph
@@ -33,7 +34,7 @@ async def graph_endpoint(
 @graph_router.get("/api/v1/graph/html")
 async def graph_html_endpoint(
     kb: str = Query(...),
-    _: None = Depends(require_bearer_token),
+    _: None = Depends(require_read_permission),
 ) -> HTMLResponse:
     # Self-contained graph HTML (the same renderer the ``openkb visualize`` CLI
     # writes to disk) for the Workbench's sandboxed iframe / new tab. The POST

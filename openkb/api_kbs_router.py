@@ -11,7 +11,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from starlette.concurrency import run_in_threadpool
 
-from openkb.api_helpers import _is_kb_dir, require_bearer_token
+from openkb.api_auth import require_write_permission
+from openkb.api_helpers import _is_kb_dir
 from openkb.api_models import KbDeleteRequest, KbDeleteResponse
 from openkb.config import registered_kbs, resolve_kb_alias
 from openkb.kb_admin import delete_kb
@@ -22,7 +23,7 @@ kbs_router = APIRouter()
 @kbs_router.post("/api/v1/kb/delete", response_model=KbDeleteResponse)
 async def delete_kb_endpoint(
     request: KbDeleteRequest,
-    _: None = Depends(require_bearer_token),
+    _: None = Depends(require_write_permission),
 ) -> KbDeleteResponse:
     # Type-the-name confirmation, re-checked server-side: this physically
     # removes the whole KB directory (raw docs + wiki) and is irreversible, so

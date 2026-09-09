@@ -11,7 +11,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from starlette.concurrency import run_in_threadpool
 
-from openkb.api_helpers import _resolve_kb, require_bearer_token
+from openkb.api_auth import require_read_permission
+from openkb.api_helpers import _resolve_kb
 from openkb.api_models import DocumentSourceRequest, DocumentSourceResponse
 from openkb.documents import read_document_source
 
@@ -21,7 +22,7 @@ documents_router = APIRouter()
 @documents_router.post("/api/v1/document/source", response_model=DocumentSourceResponse)
 async def document_source_endpoint(
     request: DocumentSourceRequest,
-    _: None = Depends(require_bearer_token),
+    _: None = Depends(require_read_permission),
 ) -> DocumentSourceResponse:
     kb_dir = _resolve_kb(request.kb)
     try:

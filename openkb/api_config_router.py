@@ -11,8 +11,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from fastapi.concurrency import run_in_threadpool
 
+from openkb.api_auth import require_read_permission, require_write_permission
 from openkb.api_config import apply_global_config_patch, read_global_config
-from openkb.api_helpers import require_bearer_token
 from openkb.api_models import GlobalConfigPatchRequest, GlobalConfigResponse
 
 config_router = APIRouter()
@@ -20,7 +20,7 @@ config_router = APIRouter()
 
 @config_router.get("/api/v1/config", response_model=GlobalConfigResponse)
 async def global_config_get(
-    _: None = Depends(require_bearer_token),
+    _: None = Depends(require_read_permission),
 ) -> GlobalConfigResponse:
     return read_global_config()
 
@@ -28,7 +28,7 @@ async def global_config_get(
 @config_router.patch("/api/v1/config", response_model=GlobalConfigResponse)
 async def global_config_patch(
     request: GlobalConfigPatchRequest,
-    _: None = Depends(require_bearer_token),
+    _: None = Depends(require_write_permission),
 ) -> GlobalConfigResponse:
     # apply_global_config_patch acquires a blocking portalocker flock; run it in
     # a threadpool so the async event loop is not frozen under lock contention

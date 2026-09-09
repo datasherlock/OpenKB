@@ -37,27 +37,15 @@ from openkb.api_config_router import config_router
 from openkb.api_documents_router import documents_router
 from openkb.api_graph import graph_router
 from openkb.api_helpers import (
-    _configure_cors,
-    _init_kb_for_api,
-    _iter_deck,
-    _iter_skill,
-    _load_or_create_session,
-    _mount_web_ui,
-    _parse_stream_form,
-    _reserve_add_uploads,
-    _resolve_kb,
-    _run_add_uploads,
-    _save_query_answer,
-    _stream_add_uploads,
-    _stream_chat,
-    _stream_deck,
-    _stream_query,
-    _stream_recompile,
-    _stream_remove,
-    _stream_skill,
-    _stream_watch_events,
+    _configure_cors, _init_kb_for_api, _iter_deck, _iter_skill,
+    _load_or_create_session, _mount_web_ui, _parse_stream_form,
+    _reserve_add_uploads, _resolve_kb, _run_add_uploads, _save_query_answer,
+    _stream_add_uploads, _stream_chat, _stream_deck, _stream_query,
+    _stream_recompile, _stream_remove, _stream_skill, _stream_watch_events,
     _write_add_uploads,
-    require_bearer_token,
+)
+from openkb.api_auth import (
+    auth_router, require_read_permission, require_write_permission, security,
 )
 from openkb.api_kbs import _list_knowledge_bases
 from openkb.api_kbs_router import kbs_router
@@ -166,6 +154,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="OpenKB API", lifespan=lifespan)
 
     _configure_cors(app)
+    app.include_router(auth_router)
     app.include_router(graph_router)
     app.include_router(output_router)
     app.include_router(config_router)
@@ -175,13 +164,13 @@ def create_app() -> FastAPI:
 
     @app.get("/api/v1/kbs", response_model=KbListResponse)
     async def list_kbs_endpoint(
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_read_permission),
     ) -> KbListResponse:
         return KbListResponse(**_list_knowledge_bases())
 
     @app.get("/api/v1/meta", response_model=MetaResponse)
     async def meta_endpoint(
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_read_permission),
     ) -> MetaResponse:
         from openkb import __version__
 
@@ -190,14 +179,14 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/kb/config", response_model=KbConfigResponse)
     async def kb_config_get_endpoint(
         kb: str = Query(...),
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_read_permission),
     ) -> KbConfigResponse:
         return read_kb_config(_resolve_kb(kb))
 
     @app.patch("/api/v1/kb/config", response_model=KbConfigResponse)
     async def kb_config_patch_endpoint(
         request: KbConfigPatchRequest,
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_write_permission),
     ) -> KbConfigResponse:
         # The merge-PATCH is a read-modify-write over config.yaml + .env; hold
         # the per-KB mutation lock so two concurrent patches cannot drop fields.
@@ -209,7 +198,7 @@ def create_app() -> FastAPI:
     @app.post("/api/v1/init", response_model=InitResponse)
     async def init_endpoint(
         request: InitRequest,
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_write_permission),
     ) -> InitResponse:
         try:
             kb_name = validate_kb_name(request.kb)
@@ -248,7 +237,7 @@ def create_app() -> FastAPI:
         kb: str = Form(...),
         stream: str = Form("true"),
         files: list[UploadFile] = File(default=[]),
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_write_permission),
     ) -> Any:
         resolved_kb_dir = _resolve_kb(kb)
         bundle = resolve_credential_bundle(resolved_kb_dir)
@@ -275,7 +264,7 @@ def create_app() -> FastAPI:
     async def query_endpoint(
         request: QueryRequest,
         fastapi_request: Request,
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_read_permission),
     ) -> Any:
         kb_dir = _resolve_kb(request.kb)
         bundle = resolve_credential_bundle(kb_dir)
@@ -316,7 +305,7 @@ def create_app() -> FastAPI:
     async def chat_endpoint(
         request: ChatRequest,
         fastapi_request: Request,
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_read_permission),
     ) -> Any:
         kb_dir = _resolve_kb(request.kb)
         bundle = resolve_credential_bundle(kb_dir)
@@ -352,7 +341,7 @@ def create_app() -> FastAPI:
     @app.post("/api/v1/chat/sessions", response_model=ChatSessionListResponse)
     async def chat_sessions_endpoint(
         request: KbRequest,
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_read_permission),
     ) -> ChatSessionListResponse:
         kb_dir = _resolve_kb(request.kb)
         try:
@@ -367,7 +356,7 @@ def create_app() -> FastAPI:
     @app.post("/api/v1/chat/sessions/load", response_model=ChatSessionLoadResponse)
     async def chat_session_load_endpoint(
         request: ChatSessionLoadRequest,
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_read_permission),
     ) -> ChatSessionLoadResponse:
         kb_dir = _resolve_kb(request.kb)
         try:
@@ -394,7 +383,7 @@ def create_app() -> FastAPI:
     @app.post("/api/v1/chat/sessions/delete", response_model=ChatSessionDeleteResponse)
     async def chat_session_delete_endpoint(
         request: ChatSessionDeleteRequest,
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_write_permission),
     ) -> ChatSessionDeleteResponse:
         kb_dir = _resolve_kb(request.kb)
         try:
@@ -414,7 +403,7 @@ def create_app() -> FastAPI:
     @app.post("/api/v1/list", response_model=ListResponse)
     async def list_endpoint(
         request: KbRequest,
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_read_permission),
     ) -> ListResponse:
         kb_dir = _resolve_kb(request.kb)
         try:
@@ -428,7 +417,7 @@ def create_app() -> FastAPI:
     @app.post("/api/v1/status", response_model=StatusResponse)
     async def status_endpoint(
         request: KbRequest,
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_read_permission),
     ) -> StatusResponse:
         kb_dir = _resolve_kb(request.kb)
         try:
@@ -442,8 +431,12 @@ def create_app() -> FastAPI:
     @app.post("/api/v1/lint", response_model=LintResponse)
     async def lint_endpoint(
         request: LintRequest,
-        _: None = Depends(require_bearer_token),
+        fastapi_request: Request,
+        credentials: HTTPAuthorizationCredentials | None = Depends(security),
     ) -> LintResponse:
+        require_read_permission(fastapi_request, credentials)
+        if request.fix:
+            require_write_permission(fastapi_request, credentials)
         kb_dir = _resolve_kb(request.kb)
         bundle = resolve_credential_bundle(kb_dir)
         try:
@@ -462,7 +455,7 @@ def create_app() -> FastAPI:
     @app.post("/api/v1/remove", response_model=RemoveResponse)
     async def remove_endpoint(
         request: RemoveRequest,
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_write_permission),
     ) -> Any:
         kb_dir = _resolve_kb(request.kb)
         if request.stream:
@@ -497,7 +490,7 @@ def create_app() -> FastAPI:
     async def recompile_endpoint(
         request: RecompileRequest,
         fastapi_request: Request,
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_write_permission),
     ) -> Any:
         kb_dir = _resolve_kb(request.kb)
         bundle = resolve_credential_bundle(kb_dir)
@@ -552,7 +545,7 @@ def create_app() -> FastAPI:
     @app.post("/api/v1/watch/start", response_model=WatchStatusResponse)
     async def watch_start_endpoint(
         request: WatchStartRequest,
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_write_permission),
     ) -> WatchStatusResponse:
         kb_dir = _resolve_kb(request.kb)
         try:
@@ -567,7 +560,7 @@ def create_app() -> FastAPI:
     @app.post("/api/v1/watch/stop", response_model=WatchStatusResponse)
     async def watch_stop_endpoint(
         request: KbRequest,
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_write_permission),
     ) -> WatchStatusResponse:
         _resolve_kb(request.kb)
         if not registry.stop(request.kb):
@@ -583,7 +576,7 @@ def create_app() -> FastAPI:
     @app.post("/api/v1/watch/status", response_model=WatchStatusResponse)
     async def watch_status_endpoint(
         request: KbRequest,
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_read_permission),
     ) -> WatchStatusResponse:
         _resolve_kb(request.kb)
         return WatchStatusResponse(**registry.status(request.kb))
@@ -594,7 +587,7 @@ def create_app() -> FastAPI:
         kb: str = Query(..., min_length=1),
         max_events: int | None = Query(default=None, ge=1),
         timeout_seconds: float | None = Query(default=None, ge=0),
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_read_permission),
     ) -> Any:
         _resolve_kb(kb)
         return StreamingResponse(
@@ -606,7 +599,7 @@ def create_app() -> FastAPI:
     async def deck_endpoint(
         request: DeckRequest,
         fastapi_request: Request,
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_write_permission),
     ) -> Any:
         kb_dir = _resolve_kb(request.kb)
         bundle = resolve_credential_bundle(kb_dir)
@@ -634,7 +627,7 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/deck", response_model=DeckListResponse)
     async def deck_list_endpoint(
         kb: str = Query(...),
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_read_permission),
     ) -> DeckListResponse:
         from openkb.deck import decks_root
 
@@ -653,7 +646,7 @@ def create_app() -> FastAPI:
     async def deck_download_endpoint(
         name: str,
         kb: str = Query(...),
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_read_permission),
     ) -> Any:
         from openkb.cli import _validate_skill_name
         from openkb.deck import deck_dir, decks_root
@@ -674,7 +667,7 @@ def create_app() -> FastAPI:
     async def skill_endpoint(
         request: SkillRequest,
         fastapi_request: Request,
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_write_permission),
     ) -> Any:
         kb_dir = _resolve_kb(request.kb)
         bundle = resolve_credential_bundle(kb_dir)
@@ -702,7 +695,7 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/skill", response_model=SkillListResponse)
     async def skill_list_endpoint(
         kb: str = Query(...),
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_read_permission),
     ) -> SkillListResponse:
         from openkb.skill import skills_root
 
@@ -721,7 +714,7 @@ def create_app() -> FastAPI:
     async def skill_archive_endpoint(
         name: str,
         kb: str = Query(...),
-        _: None = Depends(require_bearer_token),
+        _: None = Depends(require_read_permission),
     ) -> Any:
         import io
         import zipfile

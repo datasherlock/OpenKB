@@ -246,13 +246,25 @@ def fetch_gdrive_file_to_raw(url_or_id: str, kb_dir: Path) -> Path | None:
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="ignore")
         if exc.code == 403 and "ACCESS_TOKEN_SCOPE_INSUFFICIENT" in body:
-            click.echo(
-                f"  [ERROR] Human user '{identity}' does not have Google Drive access enabled in gcloud.\n"
-                f"  To grant Drive access to your human user account, run:\n\n"
-                f"      gcloud auth login --enable-gdrive-access\n\n"
-                f"  Then re-run your `openkb add` command.",
-                err=True,
-            )
+            if identity.endswith("@google.com"):
+                click.echo(
+                    f"  [ERROR] Account '{identity}' cannot access Google Drive API via gcloud CLI.\n"
+                    f"  Google corporate security policy prohibits internal Cloud SDK OAuth clients\n"
+                    f"  from requesting Google Drive scopes ('restricted_client').\n\n"
+                    f"  Resolution options:\n"
+                    f"    1) In the Google Doc/Sheet: File -> Download -> Microsoft Word (.docx) or Excel (.xlsx)\n"
+                    f"       Then run: openkb add ~/Downloads/<filename>\n"
+                    f"    2) Provide a temporary Drive OAuth token via: OPENKB_GDRIVE_ACCESS_TOKEN=<token>",
+                    err=True,
+                )
+            else:
+                click.echo(
+                    f"  [ERROR] Human user '{identity}' does not have Google Drive access enabled in gcloud.\n"
+                    f"  To grant Drive access to your human user account, run:\n\n"
+                    f"      gcloud auth login --enable-gdrive-access\n\n"
+                    f"  Then re-run your `openkb add` command.",
+                    err=True,
+                )
         elif exc.code == 404:
             is_sa = "gserviceaccount.com" in identity
             if is_sa:

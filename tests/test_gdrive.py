@@ -57,10 +57,19 @@ class TestGdriveUrlDetection:
 
 
 class TestGdriveCredentials:
+    def test_get_drive_credentials_human_user(self):
+        with patch("openkb.gdrive._get_gcloud_user_token", return_value=("fake-user-token", "jeromerajan@google.com")):
+            creds, identity = get_drive_credentials()
+            assert creds.token == "fake-user-token"
+            assert identity == "jeromerajan@google.com"
+
     def test_get_drive_credentials_native(self):
         mock_creds = MagicMock()
         mock_creds.service_account_email = "test-sa@project.iam.gserviceaccount.com"
-        with patch("google.auth.default", return_value=(mock_creds, "my-proj")):
+        with (
+            patch("openkb.gdrive._get_gcloud_user_token", return_value=(None, None)),
+            patch("google.auth.default", return_value=(mock_creds, "my-proj")),
+        ):
             creds, identity = get_drive_credentials()
             assert creds == mock_creds
             assert identity == "test-sa@project.iam.gserviceaccount.com"
@@ -74,6 +83,7 @@ class TestGdriveCredentials:
         mock_imp = MagicMock()
 
         with (
+            patch("openkb.gdrive._get_gcloud_user_token", return_value=(None, None)),
             patch("google.auth.default", side_effect=[(mock_native, "proj"), (mock_base, "proj")]),
             patch("google.auth.impersonated_credentials.Credentials", return_value=mock_imp) as mock_imp_cls,
         ):

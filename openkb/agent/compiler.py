@@ -513,6 +513,12 @@ async def _close_async_llm_clients() -> None:
         await litellm.close_litellm_async_clients()
     except Exception:
         logger.debug("litellm async client cleanup failed", exc_info=True)
+    try:
+        cache = getattr(litellm, "in_memory_llm_clients_cache", None)
+        if cache is not None and hasattr(cache, "cache_dict"):
+            cache.cache_dict.clear()
+    except Exception:
+        pass
 
 
 def _warn_if_truncated(response, step_name: str, max_tokens: int | None) -> bool:

@@ -85,6 +85,39 @@ class TestLiteLLMPatch(unittest.TestCase):
             client = PageIndexClient(model="vertex_ai/gemini-3.8-flash", storage_path=tmpdir)
             self.assertIsNotNone(client)
 
+    def test_async_httpx_handler_recreates_closed_client(self):
+        import asyncio
+        import litellm
+        from litellm.llms.custom_httpx import http_handler
+        apply_litellm_patches()
+
+        handler = http_handler.get_async_httpx_client(litellm.LlmProviders.VERTEX_AI)
+        old_client = handler.client
+        self.assertFalse(old_client.is_closed)
+
+        # Explicitly close the underlying httpx client
+        asyncio.run(old_client.aclose())
+        self.assertTrue(old_client.is_closed)
+
+        # Accessing handler.client should transparently create and return a fresh open client
+        new_client = handler.client
+        self.assertFalse(new_client.is_closed)
+        self.assertIsNot(new_client, old_client)
+
+    def test_close_litellm_async_clients_clears_cache(self):
+        import asyncio
+        import litellm
+        from litellm.llms.custom_httpx import http_handler
+        apply_litellm_patches()
+
+        _ = http_handler.get_async_httpx_client(litellm.LlmProviders.VERTEX_AI)
+        cache = getattr(litellm, "in_memory_llm_clients_cache", None)
+        self.assertIsNotNone(cache)
+        self.assertGreater(len(cache.cache_dict), 0)
+
+        asyncio.run(litellm.close_litellm_async_clients())
+        self.assertEqual(len(cache.cache_dict), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

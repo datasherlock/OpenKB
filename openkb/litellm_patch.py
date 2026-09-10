@@ -196,4 +196,116 @@ def apply_litellm_patches() -> None:
     except Exception as exc:
         logger.debug("Could not patch pageindex: %s", exc)
 
+    # Patch LiteLLM AsyncHTTPHandler to automatically recover from closed clients.
+    # LiteLLM's close_litellm_async_clients() closes httpx clients without removing
+    # the AsyncHTTPHandler instances from in_memory_llm_clients_cache.
+    # In persistent servers (e.g. FastAPI / Uvicorn), subsequent LLM calls
+    # reuse the cached handler whose httpx client is closed, resulting in:
+    #   RuntimeError: Cannot send a request, as the client has been closed.
+    try:
+        from litellm.llms.custom_httpx import http_handler
+
+        handler_cls = getattr(http_handler, "AsyncHTTPHandler", None)
+        if handler_cls is not None and not getattr(
+            handler_cls, "_openkb_client_patched", False
+        ):
+            orig_post = getattr(handler_cls, "post", None)
+
+            def _get_client(self):
+                c = getattr(self, "_active_client", None)
+                if c is None:
+                    c = self.__dict__.get("client")
+                if c is None or getattr(c, "is_closed", False):
+                    c = self.create_client(
+                        timeout=getattr(self, "timeout", None),
+                        event_hooks=getattr(self, "event_hooks", None),
+                        ssl_verify=getattr(self, "ssl_verify", None),
+                        shared_session=getattr(self, "shared_session", None),
+                    )
+                    self._active_client = c
+                return c
+
+            def _set_client(self, value):
+                self._active_client = value
+
+            handler_cls.client = property(_get_client, _set_client)
+
+            if orig_post is not None:
+
+                async def _patched_post(self, *args, **kwargs):
+                    # Ensure client is open before attempting post
+                    _ = self.client
+                    try:
+                        return await orig_post(self, *args, **kwargs)
+                    except RuntimeError as e:
+                        if "client has been closed" in str(e).lower():
+                            logger.info(
+                                "Detected closed httpx client in AsyncHTTPHandler.post; recreating and retrying once"
+                            )
+                            self._active_client = self.create_client(
+                                timeout=getattr(self, "timeout", None),
+                                event_hooks=getattr(self, "event_hooks", None),
+                                ssl_verify=getattr(self, "ssl_verify", None),
+                                shared_session=getattr(self, "shared_session", None),
+                            )
+                            return await orig_post(self, *args, **kwargs)
+                        raise
+
+                handler_cls.post = _patched_post
+
+            handler_cls._openkb_client_patched = True
+
+        # Also patch get_async_httpx_client to ensure the returned handler client is active
+        orig_get_client = getattr(http_handler, "get_async_httpx_client", None)
+        if orig_get_client is not None and not getattr(
+            orig_get_client, "_openkb_patched", False
+        ):
+
+            def _patched_get_async_httpx_client(*args, **kwargs):
+                handler = orig_get_client(*args, **kwargs)
+                if handler is not None:
+                    _ = getattr(handler, "client", None)
+                return handler
+
+            _patched_get_async_httpx_client._openkb_patched = True
+            http_handler.get_async_httpx_client = _patched_get_async_httpx_client
+
+            try:
+                from litellm.llms.vertex_ai.gemini import (
+                    vertex_and_google_ai_studio_gemini as v_and_g,
+                )
+
+                v_and_g.get_async_httpx_client = _patched_get_async_httpx_client
+            except Exception:
+                pass
+
+        # Also patch litellm.close_litellm_async_clients to clear in_memory_llm_clients_cache
+        orig_close_clients = getattr(litellm, "close_litellm_async_clients", None)
+        if orig_close_clients is not None and not getattr(
+            orig_close_clients, "_openkb_patched", False
+        ):
+
+            async def _patched_close_async_clients():
+                await orig_close_clients()
+                try:
+                    cache = getattr(litellm, "in_memory_llm_clients_cache", None)
+                    if cache is not None and hasattr(cache, "cache_dict"):
+                        cache.cache_dict.clear()
+                except Exception:
+                    pass
+
+            _patched_close_async_clients._openkb_patched = True
+            litellm.close_litellm_async_clients = _patched_close_async_clients
+            try:
+                from litellm.llms.custom_httpx import async_client_cleanup
+
+                async_client_cleanup.close_litellm_async_clients = (
+                    _patched_close_async_clients
+                )
+            except Exception:
+                pass
+
+    except Exception as exc:
+        logger.debug("Could not patch litellm async http handler: %s", exc)
+
     _PATCHED = True

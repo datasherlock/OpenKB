@@ -89,6 +89,7 @@ from openkb.api_models import (
 from openkb.api_output import output_router
 from openkb.api_pages_router import pages_router
 from openkb.api_sync_router import sync_router
+from openkb.api_url_router import url_router
 from openkb.cli import (
     get_kb_list,
     get_kb_status,
@@ -164,6 +165,7 @@ def create_app() -> FastAPI:
     app.include_router(pages_router)
     app.include_router(documents_router)
     app.include_router(sync_router)
+    app.include_router(url_router)
 
     @app.get("/api/v1/kbs", response_model=KbListResponse)
     async def list_kbs_endpoint(

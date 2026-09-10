@@ -20,6 +20,9 @@
     "inProgress": "Uploading and compiling…",
     "dropzone": "Drop files here, or click to choose",
     "dropzoneHint": "PDF / Word / Markdown / text and more; multi-select supported",
+    "urlInputPlaceholder": "Or paste URL (Google Doc, Google Sheet, Web page, or PDF)…",
+    "urlImportButton": "Import URL",
+    "urlImporting": "Importing…",
     "progressHeading": "Upload progress · {{count}}",
     "fileStatus": {
       "pending": "Waiting",

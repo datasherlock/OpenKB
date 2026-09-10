@@ -216,9 +216,9 @@ def _extract_html(url: str, raw_dir: Path) -> Path | None:
 def fetch_url_to_raw(url: str, kb_dir: Path) -> Path | None:
     """Fetch ``url`` into ``<kb>/raw/`` and return the local path.
 
-    Routing is decided by HTTP ``Content-Type`` validated against magic
-    bytes (in case the server lies):
+    Routing is decided by URL type / HTTP ``Content-Type``:
 
+    - Google Drive / Docs / Sheets → fetch_gdrive_file_to_raw
     - PDF  → urllib chunked download → ``raw/<sanitized>.pdf``
     - HTML → trafilatura main-content extract → ``raw/<title-slug>.md``
     - anything else → error, returns None
@@ -227,6 +227,11 @@ def fetch_url_to_raw(url: str, kb_dir: Path) -> Path | None:
     existing PageIndex / markitdown routing by file extension and page
     count takes over from there.
     """
+    from openkb.gdrive import is_gdrive_url, fetch_gdrive_file_to_raw
+
+    if is_gdrive_url(url):
+        return fetch_gdrive_file_to_raw(url, kb_dir)
+
     raw_dir = kb_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
 

@@ -1123,6 +1123,15 @@ def add(ctx, path, from_pageindex_cloud):
         click.echo("Provide a PATH or use --from-pageindex-cloud <DOC_ID>.")
         return
 
+    # Pre-add hook: pull remote changes if auto_pull is enabled so local starts from latest SSOT
+    try:
+        from openkb.cloud_sync import run_sync_hook
+        ok, msg = run_sync_hook(kb_dir, "pull")
+        if ok and "disabled" not in msg and "defined" not in msg:
+            click.echo(f"Cloud sync (pre-add pull): {msg}")
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Pre-add cloud sync failed: %s", exc)
+
     # URL ingest: download into raw/ first, then call add_single_file explicitly.
     # Keep staged conversion enabled so converted source artifacts do not touch
     # the live KB before the mutation snapshot exists. The tri-state outcome
@@ -1140,6 +1149,13 @@ def add(ctx, path, from_pageindex_cloud):
         # indexing has already succeeded but compilation didn't.
         if outcome == "skipped":
             fetched.unlink(missing_ok=True)
+        try:
+            from openkb.cloud_sync import run_sync_hook
+            ok, msg = run_sync_hook(kb_dir, "push")
+            if ok and "disabled" not in msg and "defined" not in msg:
+                click.echo(f"Cloud sync: {msg}")
+        except Exception as exc:
+            logging.getLogger(__name__).warning("Post-add cloud sync failed: %s", exc)
         return
 
     target = Path(path)

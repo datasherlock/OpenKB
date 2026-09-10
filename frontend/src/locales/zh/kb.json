@@ -20,6 +20,9 @@
     "inProgress": "正在上传并编译…",
     "dropzone": "拖放文件到此处，或点击选择",
     "dropzoneHint": "支持 PDF / Word / Markdown / 文本等，可多选",
+    "urlInputPlaceholder": "或粘贴链接（Google 文档、Google 表格、网页或 PDF）…",
+    "urlImportButton": "导入链接",
+    "urlImporting": "正在导入…",
     "progressHeading": "上传进度 · {{count}}",
     "fileStatus": {
       "pending": "等待中",

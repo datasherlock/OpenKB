@@ -6,7 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { FileText, Link2, Loader2, Pencil, Upload, RefreshCw, Settings2, Trash2, Circle, CheckCircle2, CircleSlash2, XCircle, X, BookOpen } from 'lucide-react'
 import { toast } from 'sonner'
 import { deletePage, editPage, getDocumentSource, getKbInventory, getPage, getPageLinks, type DocumentSource, type KbInventory, type WikiDocument } from '@/api/wiki'
-import { streamUpload, removeDocument, type AddResult } from '@/api/maintenance'
+import { streamUpload, removeDocument, addUrl, type AddResult } from '@/api/maintenance'
 import { ApiError } from '@/api/client'
 import MarkdownView from '@/components/MarkdownView'
 import PageList from '@/components/PageList'
@@ -335,6 +335,36 @@ export default function KbDetail() {
     [id, uploading, refreshInventory, t],
   )
 
+  const onAddUrl = useCallback(
+    async (url: string) => {
+      const trimmed = url.trim()
+      if (!trimmed || uploading) return
+      setUploading(true)
+      const rowId = String(rowIdSeq.current++)
+      setUploadFiles([{ id: rowId, name: trimmed, status: 'processing' as const }])
+      try {
+        const res = await addUrl(id, trimmed)
+        const fileItem = res.files[0]
+        const status = (fileItem?.status || 'added') as UploadStatus
+        setUploadFiles([{ id: rowId, name: trimmed, status, message: fileItem?.message }])
+        if (res.added_count > 0) {
+          toast.success(t('kb:upload.successToast', { summary: fileItem?.message || trimmed }))
+        } else if (res.failed_count > 0) {
+          toast.error(t('kb:upload.errorToast', { summary: fileItem?.message || trimmed }))
+        } else {
+          toast.info(t('kb:upload.existsToast', { summary: fileItem?.message || trimmed }))
+        }
+        await refreshInventory()
+      } catch (err: unknown) {
+        setUploadFiles([{ id: rowId, name: trimmed, status: 'failed' as const, message: err instanceof Error ? err.message : String(err) }])
+        toast.error(err instanceof ApiError ? err.message : String(err))
+      } finally {
+        setUploading(false)
+      }
+    },
+    [id, uploading, refreshInventory, t],
+  )
+
   /** Remove one document via `/api/v1/remove`, then refresh + toast. The
    *  identifier is the document's original filename (`WikiDocument.name`),
    *  which the backend resolves by exact-name match first. `/api/v1/remove`
@@ -454,6 +484,7 @@ export default function KbDetail() {
             fileInputRef={fileInputRef}
             onDragActiveChange={setDragActive}
             onUpload={doUpload}
+            onAddUrl={onAddUrl}
             onRefresh={refreshInventory}
             onDelete={onDeleteDocument}
           />
@@ -1011,6 +1042,7 @@ function DocumentsPane({
   fileInputRef,
   onDragActiveChange,
   onUpload,
+  onAddUrl,
   onRefresh,
   onDelete,
 }: {
@@ -1023,10 +1055,12 @@ function DocumentsPane({
   fileInputRef: RefObject<HTMLInputElement | null>
   onDragActiveChange: (active: boolean) => void
   onUpload: (files: File[]) => void
+  onAddUrl: (url: string) => Promise<void>
   onRefresh: () => void
   onDelete: (identifier: string) => Promise<void>
 }) {
   const { t } = useTranslation(['kb', 'common'])
+  const [urlInput, setUrlInput] = useState('')
   // Inline delete confirm: `confirmName` is the row awaiting confirmation;
   // `deletingName` is the row whose remove request is in flight.
   const [confirmName, setConfirmName] = useState<string | null>(null)
@@ -1148,6 +1182,57 @@ function DocumentsPane({
               <div className="mt-1 text-[12px] text-muted-foreground">{t('kb:upload.dropzoneHint')}</div>
             </>
           )}
+        </div>
+
+        {/* URL Import (Google Docs, Google Sheets, web pages, PDFs) */}
+        <div className="mt-3 flex gap-2">
+          <input
+            type="url"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                const trimmed = urlInput.trim()
+                if (trimmed && !uploading) {
+                  setUrlInput('')
+                  void onAddUrl(trimmed)
+                }
+              }
+            }}
+            placeholder={t('kb:upload.urlInputPlaceholder')}
+            disabled={uploading}
+            className="flex-1 rounded-xl border border-[hsl(var(--glass-border))] glass-2 px-3.5 py-2 text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent-brand/40"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const trimmed = urlInput.trim()
+              if (trimmed && !uploading) {
+                setUrlInput('')
+                void onAddUrl(trimmed)
+              }
+            }}
+            disabled={!urlInput.trim() || uploading}
+            className={cn(
+              'px-4 py-2 rounded-xl text-[13px] font-medium transition-colors flex items-center gap-2',
+              urlInput.trim() && !uploading
+                ? 'bg-foreground text-background hover:bg-foreground/90 cursor-pointer'
+                : 'bg-muted text-muted-foreground cursor-not-allowed opacity-60',
+            )}
+          >
+            {uploading ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                {t('kb:upload.urlImporting')}
+              </>
+            ) : (
+              <>
+                <Link2 className="w-3.5 h-3.5" />
+                {t('kb:upload.urlImportButton')}
+              </>
+            )}
+          </button>
         </div>
 
         {/* Per-file upload progress (streaming /api/v1/add?stream=true) */}

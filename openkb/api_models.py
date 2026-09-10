@@ -122,6 +122,11 @@ class AddResponse(BaseModel):
     failed_count: int
 
 
+class AddUrlRequest(BaseModel):
+    kb: str = Field(..., min_length=1)
+    url: str = Field(..., min_length=1)
+
+
 class KbRequest(BaseModel):
     kb: str = Field(..., min_length=1)
 

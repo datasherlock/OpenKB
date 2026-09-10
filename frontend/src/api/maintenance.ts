@@ -174,6 +174,10 @@ export function removeDocument(kb: string, identifier: string): Promise<RemoveRe
   return apiFetch<RemoveResult>("/api/v1/remove", { body: { kb, identifier } })
 }
 
+export function addUrl(kb: string, url: string): Promise<AddResult> {
+  return apiFetch<AddResult>("/api/v1/add-url", { body: { kb, url } })
+}
+
 export function watchStart(kb: string, debounce?: number): Promise<WatchStatus> {
   return apiFetch<WatchStatus>("/api/v1/watch/start", { body: { kb, debounce } })
 }

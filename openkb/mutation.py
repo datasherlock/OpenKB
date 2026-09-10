@@ -62,7 +62,17 @@ def _hardlink_or_copy(src: str, dst: str) -> None:
     try:
         os.link(src_path, dst_path)
     except OSError as exc:
-        if exc.errno not in (errno.EXDEV, errno.EPERM, errno.EACCES):
+        # Fall back to copy2 when hardlinks are not supported (e.g. EXDEV cross-device,
+        # EPERM/EACCES ACL restrictions, or ENOSYS/ENOTSUP on FUSE filesystems like GCS FUSE).
+        fallback_errnos = (
+            errno.EXDEV,
+            errno.EPERM,
+            errno.EACCES,
+            errno.ENOSYS,
+            getattr(errno, "ENOTSUP", errno.ENOSYS),
+            getattr(errno, "EOPNOTSUPP", errno.ENOSYS),
+        )
+        if exc.errno not in fallback_errnos:
             raise
         shutil.copy2(src_path, dst_path)
 

@@ -67,6 +67,12 @@ def apply_litellm_patches() -> None:
     except ImportError:
         return
 
+    # Disable LiteLLM background telemetry to eliminate LoggingWorker timeout errors
+    try:
+        litellm.telemetry = False
+    except Exception:
+        pass
+
     # Patch Vertex AI and Google AI Studio config transformers
     for config_cls in (
         getattr(litellm, "VertexGeminiConfig", None),

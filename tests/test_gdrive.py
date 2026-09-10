@@ -45,6 +45,21 @@ class TestGdriveUrlDetection:
         assert is_gdrive_url(url)
         assert extract_gdrive_id(url) == "1a2b3c4d5e6f7g8h9i0j_file_id"
 
+    def test_multi_account_and_hosted_urls(self):
+        doc_u0 = "https://docs.google.com/document/u/0/d/12XDBPI8j7v6Hc-0eo36sUwKOE4JY12LhHBNpqkwwb-8/edit"
+        sheet_u1 = "https://docs.google.com/spreadsheets/u/1/d/1XtQYrQ2Z0v8o8nd--Zbc-BdhJbI60lAnl2MGVFju2zE/edit"
+        hosted_doc = "https://docs.google.com/a/google.com/document/d/12XDBPI8j7v6Hc-0eo36sUwKOE4JY12LhHBNpqkwwb-8/edit"
+        drive_u0 = "https://drive.google.com/file/u/0/d/1a2b3c4d5e6f7g8h9i0j_file_id/view"
+
+        assert is_gdrive_url(doc_u0)
+        assert extract_gdrive_id(doc_u0) == "12XDBPI8j7v6Hc-0eo36sUwKOE4JY12LhHBNpqkwwb-8"
+        assert is_gdrive_url(sheet_u1)
+        assert extract_gdrive_id(sheet_u1) == "1XtQYrQ2Z0v8o8nd--Zbc-BdhJbI60lAnl2MGVFju2zE"
+        assert is_gdrive_url(hosted_doc)
+        assert extract_gdrive_id(hosted_doc) == "12XDBPI8j7v6Hc-0eo36sUwKOE4JY12LhHBNpqkwwb-8"
+        assert is_gdrive_url(drive_u0)
+        assert extract_gdrive_id(drive_u0) == "1a2b3c4d5e6f7g8h9i0j_file_id"
+
     def test_bare_drive_id(self):
         fid = "12XDBPI8j7v6Hc-0eo36sUwKOE4JY12LhHBNpqkwwb-8"
         assert extract_gdrive_id(fid) == fid

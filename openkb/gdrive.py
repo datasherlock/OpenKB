@@ -35,10 +35,10 @@ CHUNK_BYTES = 64 * 1024
 TIMEOUT_SECONDS = 60
 
 GDRIVE_PATTERNS = [
-    re.compile(r"https?://docs\.google\.com/document/d/([a-zA-Z0-9_-]+)"),
-    re.compile(r"https?://docs\.google\.com/spreadsheets/d/([a-zA-Z0-9_-]+)"),
-    re.compile(r"https?://docs\.google\.com/presentation/d/([a-zA-Z0-9_-]+)"),
-    re.compile(r"https?://drive\.google\.com/file/d/([a-zA-Z0-9_-]+)"),
+    re.compile(r"https?://docs\.google\.com/(?:a/[a-zA-Z0-9_.-]+/)?document/(?:u/\d+/)?d/([a-zA-Z0-9_-]+)"),
+    re.compile(r"https?://docs\.google\.com/(?:a/[a-zA-Z0-9_.-]+/)?spreadsheets/(?:u/\d+/)?d/([a-zA-Z0-9_-]+)"),
+    re.compile(r"https?://docs\.google\.com/(?:a/[a-zA-Z0-9_.-]+/)?presentation/(?:u/\d+/)?d/([a-zA-Z0-9_-]+)"),
+    re.compile(r"https?://drive\.google\.com/(?:a/[a-zA-Z0-9_.-]+/)?file/(?:u/\d+/)?d/([a-zA-Z0-9_-]+)"),
     re.compile(r"https?://drive\.google\.com/open\?id=([a-zA-Z0-9_-]+)"),
     re.compile(r"https?://drive\.google\.com/uc\?id=([a-zA-Z0-9_-]+)"),
 ]
@@ -237,8 +237,8 @@ def fetch_gdrive_file_to_raw(url_or_id: str, kb_dir: Path) -> Path | None:
 
     auth_header = {"Authorization": f"Bearer {creds.token}"}
 
-    # Step 1: Retrieve metadata
-    meta_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?fields=id,name,mimeType"
+    # Step 1: Retrieve metadata (supportsAllDrives=true is required for Shared / Team Drives)
+    meta_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?fields=id,name,mimeType&supportsAllDrives=true"
     meta_req = urllib.request.Request(meta_url, headers=auth_header)
     try:
         with urllib.request.urlopen(meta_req, timeout=TIMEOUT_SECONDS) as resp:
@@ -254,11 +254,26 @@ def fetch_gdrive_file_to_raw(url_or_id: str, kb_dir: Path) -> Path | None:
                 err=True,
             )
         elif exc.code == 404:
-            click.echo(
-                f"  [ERROR] Google Drive file not found or inaccessible (HTTP 404).\n"
-                f"  Ensure the document exists and your account ('{identity}') has access to it.",
-                err=True,
-            )
+            is_sa = "gserviceaccount.com" in identity
+            if is_sa:
+                click.echo(
+                    f"  [ERROR] Google Drive file not found or inaccessible (HTTP 404).\n"
+                    f"  If this is an internal Google Workspace document (e.g. google.com), corporate\n"
+                    f"  policy prohibits sharing with external service accounts ('{identity}').\n"
+                    f"  Resolution:\n"
+                    f"    Run via local CLI: `openkb add <URL>` which authenticates as your human user.\n"
+                    f"    Or download locally (.docx / .xlsx) and upload to the workbench.",
+                    err=True,
+                )
+            else:
+                click.echo(
+                    f"  [ERROR] Google Drive file not found or inaccessible (HTTP 404).\n"
+                    f"  The account '{identity}' does not have read access to this document, or the file ID is invalid.\n"
+                    f"  Ensure:\n"
+                    f"    1) The file is accessible by '{identity}' in Google Drive.\n"
+                    f"    2) You have run: `gcloud auth login --enable-gdrive-access`",
+                    err=True,
+                )
         elif exc.code == 403:
             click.echo(
                 f"  [ERROR] Google Drive permission denied (HTTP 403).\n"
@@ -280,11 +295,11 @@ def fetch_gdrive_file_to_raw(url_or_id: str, kb_dir: Path) -> Path | None:
         target_mime, ext = EXPORT_MIME_TYPES[mime_type]
         download_url = (
             f"https://www.googleapis.com/drive/v3/files/{file_id}/export?"
-            + urllib.parse.urlencode({"mimeType": target_mime})
+            + urllib.parse.urlencode({"mimeType": target_mime, "supportsAllDrives": "true"})
         )
     else:
         # Pre-existing file uploaded to Drive (PDF, Word doc, etc.)
-        download_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media"
+        download_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media&supportsAllDrives=true"
         ext = Path(doc_name).suffix
         if not ext:
             ext = ".pdf" if mime_type == "application/pdf" else ""

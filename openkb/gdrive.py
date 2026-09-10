@@ -100,42 +100,13 @@ def _resolve_target_service_account(kb_dir: Path | None = None) -> str | None:
     return DEFAULT_SERVICE_ACCOUNT
 
 
-def _get_gcloud_user_token() -> tuple[str | None, str | None]:
-    """Attempt to retrieve the active human user's access token from gcloud CLI."""
-    try:
-        from openkb.cloud_sync import resolve_gcloud_bin
-        gcloud_bin = resolve_gcloud_bin() or "gcloud"
-        proc = subprocess.run(
-            [gcloud_bin, "auth", "print-access-token"],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=10,
-        )
-        if proc.returncode == 0 and proc.stdout.strip():
-            token = proc.stdout.strip()
-            proc_acc = subprocess.run(
-                [gcloud_bin, "config", "get-value", "account"],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=5,
-            )
-            account = proc_acc.stdout.strip() if proc_acc.returncode == 0 else "gcloud user"
-            return token, account
-    except Exception as exc:
-        logger.debug("Failed to retrieve human user token from gcloud: %s", exc)
-    return None, None
-
-
 def get_drive_credentials(kb_dir: Path | None = None, force_impersonation: bool = False) -> tuple[Any, str]:
     """Obtain valid credentials for the Google Drive API.
 
     Returns a tuple of (credentials, identity_description).
     1. Direct bearer token via OPENKB_GDRIVE_ACCESS_TOKEN / GDRIVE_ACCESS_TOKEN.
-    2. Active human user token from local gcloud CLI (e.g. jeromerajan@google.com).
-    3. Native application default credentials (if not user credentials).
-    4. Service account impersonation fallback.
+    2. Native application default credentials (if already a service account).
+    3. Service account impersonation fallback.
     """
     env_token = os.environ.get("OPENKB_GDRIVE_ACCESS_TOKEN") or os.environ.get("GDRIVE_ACCESS_TOKEN")
     if env_token:
@@ -148,22 +119,6 @@ def get_drive_credentials(kb_dir: Path | None = None, force_impersonation: bool 
                 pass
 
         return DirectToken(env_token), "Access Token (Environment Variable)"
-
-    if not force_impersonation:
-        # Check if we have an active human user account in gcloud
-        gcloud_token, human_account = _get_gcloud_user_token()
-        if gcloud_token and human_account and "@" in human_account and not human_account.endswith(".gserviceaccount.com"):
-            class GcloudUserToken:
-                def __init__(self, token: str):
-                    self.token = token.strip()
-                    self.expired = False
-
-                def refresh(self, request=None):
-                    new_token, _ = _get_gcloud_user_token()
-                    if new_token:
-                        self.token = new_token.strip()
-
-            return GcloudUserToken(gcloud_token), human_account
 
     import google.auth
     from google.auth import impersonated_credentials
@@ -245,51 +200,20 @@ def fetch_gdrive_file_to_raw(url_or_id: str, kb_dir: Path) -> Path | None:
             meta = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="ignore")
-        if exc.code == 403 and "ACCESS_TOKEN_SCOPE_INSUFFICIENT" in body:
-            if identity.endswith("@google.com"):
-                click.echo(
-                    f"  [ERROR] Account '{identity}' cannot access Google Drive API via gcloud CLI.\n"
-                    f"  Google corporate security policy prohibits internal Cloud SDK OAuth clients\n"
-                    f"  from requesting Google Drive scopes ('restricted_client').\n\n"
-                    f"  Resolution options:\n"
-                    f"    1) In the Google Doc/Sheet: File -> Download -> Microsoft Word (.docx) or Excel (.xlsx)\n"
-                    f"       Then run: openkb add ~/Downloads/<filename>\n"
-                    f"    2) Provide a temporary Drive OAuth token via: OPENKB_GDRIVE_ACCESS_TOKEN=<token>",
-                    err=True,
-                )
-            else:
-                click.echo(
-                    f"  [ERROR] Human user '{identity}' does not have Google Drive access enabled in gcloud.\n"
-                    f"  To grant Drive access to your human user account, run:\n\n"
-                    f"      gcloud auth login --enable-gdrive-access\n\n"
-                    f"  Then re-run your `openkb add` command.",
-                    err=True,
-                )
-        elif exc.code == 404:
-            is_sa = "gserviceaccount.com" in identity
-            if is_sa:
-                click.echo(
-                    f"  [ERROR] Google Drive file not found or inaccessible (HTTP 404).\n"
-                    f"  If this is an internal Google Workspace document (e.g. google.com), corporate\n"
-                    f"  policy prohibits sharing with external service accounts ('{identity}').\n"
-                    f"  Resolution:\n"
-                    f"    Run via local CLI: `openkb add <URL>` which authenticates as your human user.\n"
-                    f"    Or download locally (.docx / .xlsx) and upload to the workbench.",
-                    err=True,
-                )
-            else:
-                click.echo(
-                    f"  [ERROR] Google Drive file not found or inaccessible (HTTP 404).\n"
-                    f"  The account '{identity}' does not have read access to this document, or the file ID is invalid.\n"
-                    f"  Ensure:\n"
-                    f"    1) The file is accessible by '{identity}' in Google Drive.\n"
-                    f"    2) You have run: `gcloud auth login --enable-gdrive-access`",
-                    err=True,
-                )
+        if exc.code == 404:
+            click.echo(
+                f"  [ERROR] Google Drive file not found or inaccessible (HTTP 404).\n"
+                f"  Ensure the document exists and has been shared with:\n\n"
+                f"      {identity}\n\n"
+                f"  (Viewer access), or that link sharing is enabled ('Anyone with the link can view').",
+                err=True,
+            )
         elif exc.code == 403:
             click.echo(
                 f"  [ERROR] Google Drive permission denied (HTTP 403).\n"
-                f"  Account '{identity}' does not have view permission for this file.",
+                f"  Ensure the document has been shared with:\n\n"
+                f"      {identity}\n\n"
+                f"  (Viewer access), or that link sharing is enabled ('Anyone with the link can view').",
                 err=True,
             )
         else:

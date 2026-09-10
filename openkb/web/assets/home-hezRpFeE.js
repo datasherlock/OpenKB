@@ -1,0 +1,1 @@
+const s="有什么想问的？",t="知识已编译就绪 · <0>{{docs}}</0> 篇文档 · <1>{{kbs}}</1> 个知识库",e="推荐提问",n="最近会话",o="未命名会话",c="由 OpenKB 驱动 · 你的知识始终是纯 Markdown，归你所有",d={greeting:s,ready:t,suggestedPrompts:e,recentSessions:n,untitledSession:o,tagline:c};export{d as default,s as greeting,t as ready,n as recentSessions,e as suggestedPrompts,c as tagline,o as untitledSession};

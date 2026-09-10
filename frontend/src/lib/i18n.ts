@@ -29,7 +29,7 @@ void i18n
   )
   .use(initReactI18next)
   .init({
-    fallbackLng: "zh",
+    fallbackLng: "en",
     supportedLngs: [...SUPPORTED_LANGUAGES],
     ns: ["common"], // preload only the always-visible chrome; rest are lazy
     defaultNS: "common",

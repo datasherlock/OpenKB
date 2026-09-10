@@ -1147,6 +1147,15 @@ def add(ctx, path, from_pageindex_cloud):
         click.echo(f"Path does not exist: {path}")
         return
 
+    # Pre-add hook: pull remote changes if auto_pull is enabled so local starts from latest SSOT
+    try:
+        from openkb.cloud_sync import run_sync_hook
+        ok, msg = run_sync_hook(kb_dir, "pull")
+        if ok and "disabled" not in msg and "defined" not in msg:
+            click.echo(f"Cloud sync (pre-add pull): {msg}")
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Pre-add cloud sync failed: %s", exc)
+
     if target.is_dir():
         files = [
             f
@@ -2360,13 +2369,20 @@ def sync(ctx, push, pull, dry_run, delete):
         click.echo("No bucket specified in cloud_sync configuration.")
         return
 
-    from openkb.cloud_sync import sync_kb_push, sync_kb_pull
+    from openkb.cloud_sync import sync_kb_push, sync_kb_pull, sync_kb_bidirectional
 
-    # Default to push if neither is explicitly passed
-    action_push = push or (not push and not pull)
-    action_pull = pull
+    # If neither --push nor --pull is specified, perform safe bidirectional sync
+    if not push and not pull:
+        click.echo(f"Synchronizing bidirectionally with {bucket}...")
+        ok, msg = sync_kb_bidirectional(kb_dir, bucket, dry_run=dry_run, delete_unmatched=delete)
+        if ok:
+            click.echo(click.style(f"[OK] Sync complete: {msg}", fg="green"))
+        else:
+            click.echo(click.style(f"[ERROR] Sync failed: {msg}", fg="red"))
+            ctx.exit(1)
+        return
 
-    if action_pull:
+    if pull:
         click.echo(f"Pulling from {bucket} into {kb_dir}...")
         ok, msg = sync_kb_pull(kb_dir, bucket, dry_run=dry_run, delete_unmatched=delete)
         if ok:
@@ -2375,7 +2391,7 @@ def sync(ctx, push, pull, dry_run, delete):
             click.echo(click.style(f"[ERROR] Pull failed: {msg}", fg="red"))
             ctx.exit(1)
 
-    if action_push:
+    if push:
         click.echo(f"Pushing from {kb_dir} to {bucket}...")
         ok, msg = sync_kb_push(kb_dir, bucket, dry_run=dry_run, delete_unmatched=delete)
         if ok:

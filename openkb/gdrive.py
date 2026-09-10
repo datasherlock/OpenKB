@@ -103,10 +103,22 @@ def get_drive_credentials(kb_dir: Path | None = None, force_impersonation: bool 
     """Obtain valid credentials for the Google Drive API.
 
     Returns a tuple of (credentials, identity_description).
-    Tries native application default credentials first (if not user credentials).
-    If ADC is a user credential without drive scope or force_impersonation is True,
-    falls back to service account impersonation.
+    1. Direct bearer token via OPENKB_GDRIVE_ACCESS_TOKEN / GDRIVE_ACCESS_TOKEN.
+    2. Native application default credentials (if not user credentials).
+    3. Service account impersonation fallback.
     """
+    env_token = os.environ.get("OPENKB_GDRIVE_ACCESS_TOKEN") or os.environ.get("GDRIVE_ACCESS_TOKEN")
+    if env_token:
+        class DirectToken:
+            def __init__(self, token: str):
+                self.token = token.strip()
+                self.expired = False
+
+            def refresh(self, request=None):
+                pass
+
+        return DirectToken(env_token), "Access Token (Environment Variable)"
+
     import google.auth
     from google.auth import impersonated_credentials
     from google.auth.transport.requests import Request
@@ -189,13 +201,21 @@ def fetch_gdrive_file_to_raw(url_or_id: str, kb_dir: Path) -> Path | None:
         if exc.code == 404:
             click.echo(
                 f"  [ERROR] Google Drive file not found or inaccessible (HTTP 404).\n"
-                f"  If the file is private, please share it with '{identity}' or enable link sharing.",
+                f"  If the file is in a Google Workspace domain (e.g. google.com), corporate\n"
+                f"  policy prohibits sharing with external service accounts ('{identity}').\n"
+                f"  Resolution options:\n"
+                f"    1) Download locally as .docx or .xlsx and run: openkb add <file>\n"
+                f"    2) Enable link sharing ('Anyone with the link can view') if allowed\n"
+                f"    3) Provide a user access token via OPENKB_GDRIVE_ACCESS_TOKEN",
                 err=True,
             )
         elif exc.code == 403:
             click.echo(
                 f"  [ERROR] Google Drive permission denied (HTTP 403).\n"
-                f"  Please ensure the file is shared with '{identity}' or enable link sharing.",
+                f"  If corporate policy prohibits sharing with external service accounts ('{identity}'):\n"
+                f"    1) Download locally as .docx or .xlsx and run: openkb add <file>\n"
+                f"    2) Enable link sharing ('Anyone with the link can view') if allowed\n"
+                f"    3) Provide a user access token via OPENKB_GDRIVE_ACCESS_TOKEN",
                 err=True,
             )
         else:

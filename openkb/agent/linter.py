@@ -11,7 +11,7 @@ from openkb.agent.tools import list_wiki_files, read_wiki_file
 from openkb.config import LlmCredentialBundle, resolve_model_settings
 from openkb.schema import get_agents_md
 
-MAX_TURNS = 50
+MAX_TURNS = 200
 
 _LINTER_INSTRUCTIONS_TEMPLATE = """\
 You are OpenKB's semantic lint agent. Your job is to audit the wiki
@@ -103,13 +103,21 @@ def build_lint_agent(
 
 
 async def run_knowledge_lint(
-    kb_dir: Path, model: str, *, bundle: LlmCredentialBundle | None = None, run_config=None
+    kb_dir: Path,
+    model: str,
+    *,
+    bundle: LlmCredentialBundle | None = None,
+    run_config=None,
+    max_turns: int | None = None,
 ) -> str:
     """Run the semantic knowledge lint agent against the wiki.
 
     Args:
         kb_dir: Root of the knowledge base.
         model: LLM model name.
+        bundle: Optional LLM credential bundle for per-KB auth.
+        run_config: Optional RunConfig.
+        max_turns: Maximum execution turns (defaults to :data:`MAX_TURNS`).
 
     Returns:
         The agent's lint report as a Markdown string.
@@ -129,9 +137,10 @@ async def run_knowledge_lint(
         "entities as needed. Produce a structured Markdown report."
     )
 
+    effective_max_turns = max_turns if max_turns is not None else MAX_TURNS
     result = (
-        await Runner.run(agent, prompt, max_turns=MAX_TURNS, run_config=run_config)
+        await Runner.run(agent, prompt, max_turns=effective_max_turns, run_config=run_config)
         if run_config
-        else await Runner.run(agent, prompt, max_turns=MAX_TURNS)
+        else await Runner.run(agent, prompt, max_turns=effective_max_turns)
     )
     return result.final_output or "Knowledge lint completed. No output produced."

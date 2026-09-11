@@ -92,12 +92,29 @@ class TestRunKnowledgeLint:
 
         async def fake_run(agent, message, **kwargs):
             captured["agent"] = agent
+            captured["kwargs"] = kwargs
             return MagicMock(final_output="report")
 
         with patch("openkb.agent.linter.Runner.run", side_effect=fake_run):
             await run_knowledge_lint(tmp_path, "gpt-4o-mini")
 
         assert captured["agent"].name == "wiki-linter"
+        assert captured["kwargs"]["max_turns"] == 200
+
+    @pytest.mark.asyncio
+    async def test_calls_runner_with_custom_max_turns(self, tmp_path):
+        (tmp_path / "wiki").mkdir()
+
+        captured = {}
+
+        async def fake_run(agent, message, **kwargs):
+            captured["kwargs"] = kwargs
+            return MagicMock(final_output="report")
+
+        with patch("openkb.agent.linter.Runner.run", side_effect=fake_run):
+            await run_knowledge_lint(tmp_path, "gpt-4o-mini", max_turns=75)
+
+        assert captured["kwargs"]["max_turns"] == 75
 
     @pytest.mark.asyncio
     async def test_handles_empty_final_output(self, tmp_path):

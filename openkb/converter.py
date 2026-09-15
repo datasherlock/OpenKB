@@ -13,7 +13,13 @@ from pathlib import Path
 import pymupdf
 
 from openkb.config import resolve_effective_config
-from openkb.images import convert_pdf_with_images, copy_relative_images, extract_base64_images
+from openkb.images import (
+    convert_pdf_with_images,
+    copy_relative_images,
+    extract_base64_images,
+    md_image_ref,
+    transcribe_image_content,
+)
 from openkb.locks import atomic_write_text, kb_ingest_lock
 from openkb.state import HashRegistry
 
@@ -160,6 +166,7 @@ def convert_document(
         # ------------------------------------------------------------------
         openkb_dir = kb_dir / ".openkb"
         config = resolve_effective_config(kb_dir)[0]
+        model: str = config.get("model", "vertex_ai/gemini-3.8-flash")
         threshold: int = config.get("pageindex_threshold", 20)
         artifact_root = staging_dir if staging_dir is not None else kb_dir
         registry = HashRegistry(openkb_dir / "hashes.json")
@@ -222,12 +229,24 @@ def convert_document(
         images_dir = artifact_root / "wiki" / "sources" / "images" / doc_name
         images_dir.mkdir(parents=True, exist_ok=True)
 
+        IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".gif"}
         if src.suffix.lower() == ".md":
             markdown = src.read_text(encoding="utf-8")
             markdown = copy_relative_images(markdown, src.parent, doc_name, images_dir)
         elif src.suffix.lower() == ".pdf":
             # Use pymupdf dict-mode for PDFs: text + images inline at correct positions
-            markdown = convert_pdf_with_images(src, doc_name, images_dir)
+            markdown = convert_pdf_with_images(
+                src, doc_name, images_dir, model=model, kb_dir=kb_dir
+            )
+        elif src.suffix.lower() in IMAGE_EXTENSIONS:
+            dest_img = images_dir / src.name
+            shutil.copy2(src, dest_img)
+            markdown = f"\n{md_image_ref('image', doc_name, src.name)}\n\n"
+            transcript = transcribe_image_content(
+                dest_img, model=model, doc_name=doc_name, kb_dir=kb_dir
+            )
+            if transcript:
+                markdown += f"{transcript}\n"
         else:
             # Non-PDF, non-MD: use markitdown (docx, pptx, html, etc.).
             # Imported lazily: markitdown pulls in magika → onnxruntime (tens

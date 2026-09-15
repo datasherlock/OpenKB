@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import base64
 
-from openkb.images import copy_relative_images, extract_base64_images
+from openkb.images import (
+    copy_relative_images,
+    extract_base64_images,
+    transcribe_image_content,
+    convert_pdf_with_images,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -247,3 +252,40 @@ class TestNoteRelativeResolution:
 
         for rel in self._link_paths(result):
             assert (note.parent / rel).exists(), rel
+
+
+class TestTranscribeImageContent:
+    def test_nonexistent_image_returns_empty(self, tmp_path):
+        res = transcribe_image_content(tmp_path / "does_not_exist.png")
+        assert res == ""
+
+    def test_transcribe_success_mock(self, tmp_path, monkeypatch):
+        img = tmp_path / "status.png"
+        img.write_bytes(FAKE_PNG)
+
+        class MockChoice:
+            message = type("Msg", (), {"content": "# Status Report\n- 30 Live\n- 988 Gap"})()
+
+        class MockResp:
+            choices = [MockChoice()]
+
+        import litellm
+
+        monkeypatch.setattr(litellm, "completion", lambda **kwargs: MockResp())
+        res = transcribe_image_content(img, model="test-model")
+        assert "# Status Report" in res
+        assert "30 Live" in res
+
+    def test_transcribe_failure_gracefully_returns_empty(self, tmp_path, monkeypatch):
+        img = tmp_path / "status.png"
+        img.write_bytes(FAKE_PNG)
+
+        import litellm
+
+        def _raise(**kwargs):
+            raise RuntimeError("API quota exceeded")
+
+        monkeypatch.setattr(litellm, "completion", _raise)
+        res = transcribe_image_content(img, model="test-model")
+        assert res == ""
+

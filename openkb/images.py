@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import base64
 import logging
+import os
 import re
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pymupdf
 
@@ -34,6 +36,97 @@ def md_image_ref(alt: str, doc_name: str, filename: str) -> str:
     resolve against the wiki root, not rendered from a note.
     """
     return f"![{alt}](images/{doc_name}/{filename})"
+
+
+_MIME_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+    ".tiff": "image/tiff",
+}
+
+
+def transcribe_image_content(
+    image_path: Path,
+    model: str | None = None,
+    doc_name: str = "",
+    kb_dir: Path | None = None,
+) -> str:
+    """Transcribe technical or tabular image content into structured Markdown using LLM Vision.
+
+    Extracts text, numbers, dates, KPI metrics, tables, and architecture diagrams.
+    Returns empty string on failure or if vision transcription is disabled.
+    """
+    if not image_path.exists():
+        return ""
+
+    if not model and kb_dir:
+        from openkb.config import resolve_effective_config
+
+        cfg = resolve_effective_config(kb_dir)[0]
+        model = cfg.get("model")
+    if not model:
+        model = "vertex_ai/gemini-3.8-flash"
+
+    # Ensure environment variables (.env) from kb_dir are present
+    if kb_dir and (kb_dir / ".env").exists():
+        from dotenv import load_dotenv
+
+        load_dotenv(kb_dir / ".env", override=False)
+
+    try:
+        import litellm
+        from openkb.config import get_extra_headers, get_timeout
+
+        mime = _MIME_TYPES.get(image_path.suffix.lower(), "image/png")
+        b64 = base64.b64encode(image_path.read_bytes()).decode("utf-8")
+
+        prompt = (
+            "You are an expert technical document transcriber.\n"
+            "Transcribe all visual and textual information from this image into clean, structured Markdown:\n"
+            "1. Extract all headline metrics, dates, counts, and status indicators (e.g. RAG - Red, Amber, Green).\n"
+            "2. Reconstruct any tables into standard Markdown tables with exact headers, rows, counts, and percentages.\n"
+            "3. Transcribe all text, headings, bullet points, and callouts exactly as written.\n"
+            "4. If there are flowcharts, architectural diagrams, or timeline curves, describe their structure, components, and key takeaways.\n"
+            "Do not invent or omit information. Output only the transcribed Markdown."
+        )
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime};base64,{b64}"},
+                    },
+                ],
+            }
+        ]
+
+        kwargs: dict[str, Any] = {}
+        extra_headers = get_extra_headers()
+        if extra_headers:
+            kwargs["extra_headers"] = extra_headers
+        timeout = get_timeout()
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+
+        if os.getenv("VERTEXAI_PROJECT"):
+            kwargs["vertex_project"] = os.getenv("VERTEXAI_PROJECT")
+        if os.getenv("VERTEXAI_LOCATION"):
+            kwargs["vertex_location"] = os.getenv("VERTEXAI_LOCATION")
+
+        resp = litellm.completion(model=model, messages=messages, **kwargs)
+        content = (resp.choices[0].message.content or "").strip()
+        logger.info("Transcribed image %s (%d chars)", image_path.name, len(content))
+        return content
+    except Exception as exc:
+        logger.warning("Failed to transcribe image %s with %s: %s", image_path.name, model, exc)
+        return ""
 
 
 def extract_pdf_images(pdf_path: Path, doc_name: str, images_dir: Path) -> dict[int, list[str]]:
@@ -88,14 +181,22 @@ def extract_pdf_images(pdf_path: Path, doc_name: str, images_dir: Path) -> dict[
     return page_images
 
 
-def convert_pdf_to_pages(pdf_path: Path, doc_name: str, images_dir: Path) -> list[dict]:
+def convert_pdf_to_pages(
+    pdf_path: Path,
+    doc_name: str,
+    images_dir: Path,
+    model: str | None = None,
+    kb_dir: Path | None = None,
+    transcribe_images: bool = True,
+) -> list[dict]:
     """Convert a PDF to per-page dicts with text content and images.
 
     Each dict has ``{"page": int, "content": str, "images": [{"path": str}]}``.
     Images are saved to *images_dir* and referenced with wiki-root-relative
     ``sources/images/...`` paths — these pages land in ``sources/<doc>.json``
     (never rendered from a note), and both ``get_wiki_page_content`` and
-    ``read_wiki_image`` resolve them against the wiki root.
+    ``read_wiki_image`` resolve them against the wiki root. When pages contain
+    dashboards, diagrams, or sparse text, images are transcribed via LLM Vision.
     """
     images_dir.mkdir(parents=True, exist_ok=True)
     pages: list[dict] = []
@@ -107,6 +208,8 @@ def convert_pdf_to_pages(pdf_path: Path, doc_name: str, images_dir: Path) -> lis
             page_num = page_idx + 1
             parts: list[str] = []
             page_images: list[dict] = []
+            page_text_blocks: list[str] = []
+            saved_images: list[tuple[str, Path, int, int]] = []
 
             for block in page.get_text("dict")["blocks"]:
                 if block["type"] == 0:  # text block
@@ -114,7 +217,7 @@ def convert_pdf_to_pages(pdf_path: Path, doc_name: str, images_dir: Path) -> lis
                     for line in block["lines"]:
                         spans_text = "".join(span["text"] for span in line["spans"])
                         lines.append(spans_text)
-                    parts.append("\n".join(lines))
+                    page_text_blocks.append("\n".join(lines))
 
                 elif block["type"] == 1:  # image block
                     width = block.get("width", 0)
@@ -130,13 +233,47 @@ def convert_pdf_to_pages(pdf_path: Path, doc_name: str, images_dir: Path) -> lis
                             pix = pymupdf.Pixmap(pymupdf.csRGB, pix)
                         img_counter += 1
                         filename = f"p{page_num}_img{img_counter}.png"
-                        (images_dir / filename).write_bytes(pix.tobytes("png"))
+                        save_path = images_dir / filename
+                        save_path.write_bytes(pix.tobytes("png"))
                         pix = None
                         img_path = f"sources/images/{doc_name}/{filename}"
                         parts.append(f"\n![image]({img_path})\n")
                         page_images.append({"path": img_path})
+                        saved_images.append((filename, save_path, width, height))
                     except Exception:
                         logger.warning("Failed to save image block on page %d", page_num)
+
+            total_page_text = "\n".join(page_text_blocks).strip()
+
+            # Render fallback page image if no text and no image blocks
+            if not total_page_text and not saved_images:
+                try:
+                    pix = page.get_pixmap(dpi=150)
+                    img_counter += 1
+                    filename = f"p{page_num}_page{img_counter}.png"
+                    save_path = images_dir / filename
+                    pix.save(str(save_path))
+                    img_path = f"sources/images/{doc_name}/{filename}"
+                    parts.append(f"\n![image]({img_path})\n")
+                    page_images.append({"path": img_path})
+                    saved_images.append((filename, save_path, int(pix.width), int(pix.height)))
+                    pix = None
+                except Exception:
+                    logger.warning("Failed to render fallback page on page %d", page_num)
+
+            if total_page_text:
+                parts.insert(0, total_page_text)
+
+            is_sparse = len(total_page_text) < 100
+            if transcribe_images:
+                for filename, save_path, width, height in saved_images:
+                    is_large = width >= 300 and height >= 200
+                    if is_sparse or is_large:
+                        transcript = transcribe_image_content(
+                            save_path, model=model, doc_name=doc_name, kb_dir=kb_dir
+                        )
+                        if transcript:
+                            parts.append(f"\n{transcript}\n")
 
             pages.append(
                 {
@@ -148,13 +285,21 @@ def convert_pdf_to_pages(pdf_path: Path, doc_name: str, images_dir: Path) -> lis
     return pages
 
 
-def convert_pdf_with_images(pdf_path: Path, doc_name: str, images_dir: Path) -> str:
+def convert_pdf_with_images(
+    pdf_path: Path,
+    doc_name: str,
+    images_dir: Path,
+    model: str | None = None,
+    kb_dir: Path | None = None,
+    transcribe_images: bool = True,
+) -> str:
     """Convert a PDF to markdown with inline images using pymupdf dict-mode.
 
     Iterates blocks in reading order per page. Text blocks become text,
     image blocks are saved to disk and replaced with a note-relative
-    ``![image](images/{doc_name}/...)`` link inline — preserving the
-    original position in the document.
+    ``![image](images/{doc_name}/...)`` link inline. When a page has sparse
+    text or significant visual assets (dashboards, charts, tables), LLM Vision
+    transcribes the full structured markdown directly into the source.
 
     Returns the full markdown string.
     """
@@ -168,13 +313,16 @@ def convert_pdf_with_images(pdf_path: Path, doc_name: str, images_dir: Path) -> 
             page_num = page_idx + 1
             parts.append("\n\n")
 
+            page_text_blocks: list[str] = []
+            saved_images: list[tuple[str, Path, int, int]] = []
+
             for block in page.get_text("dict")["blocks"]:
                 if block["type"] == 0:  # text block
                     lines = []
                     for line in block["lines"]:
                         spans_text = "".join(span["text"] for span in line["spans"])
                         lines.append(spans_text)
-                    parts.append("\n".join(lines))
+                    page_text_blocks.append("\n".join(lines))
 
                 elif block["type"] == 1:  # image block
                     width = block.get("width", 0)
@@ -190,11 +338,41 @@ def convert_pdf_with_images(pdf_path: Path, doc_name: str, images_dir: Path) -> 
                             pix = pymupdf.Pixmap(pymupdf.csRGB, pix)
                         img_counter += 1
                         filename = f"p{page_num}_img{img_counter}.png"
-                        (images_dir / filename).write_bytes(pix.tobytes("png"))
+                        save_path = images_dir / filename
+                        save_path.write_bytes(pix.tobytes("png"))
                         pix = None
-                        parts.append(f"\n{md_image_ref('image', doc_name, filename)}\n")
+                        saved_images.append((filename, save_path, width, height))
                     except Exception:
                         logger.warning("Failed to save image block on page %d", page_num)
+
+            total_page_text = "\n".join(page_text_blocks).strip()
+
+            # If page had no text and no images extracted, render full page as an image
+            if not total_page_text and not saved_images:
+                try:
+                    pix = page.get_pixmap(dpi=150)
+                    img_counter += 1
+                    filename = f"p{page_num}_page{img_counter}.png"
+                    save_path = images_dir / filename
+                    pix.save(str(save_path))
+                    saved_images.append((filename, save_path, int(pix.width), int(pix.height)))
+                    pix = None
+                except Exception:
+                    logger.warning("Failed to render fallback page on page %d", page_num)
+
+            if total_page_text:
+                parts.append(total_page_text)
+
+            is_sparse = len(total_page_text) < 100
+            for filename, save_path, width, height in saved_images:
+                parts.append(f"\n{md_image_ref('image', doc_name, filename)}\n")
+                is_large = width >= 300 and height >= 200
+                if transcribe_images and (is_sparse or is_large):
+                    transcript = transcribe_image_content(
+                        save_path, model=model, doc_name=doc_name, kb_dir=kb_dir
+                    )
+                    if transcript:
+                        parts.append(f"\n{transcript}\n")
     return "\n".join(parts)
 
 

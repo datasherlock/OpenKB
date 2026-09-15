@@ -116,10 +116,15 @@ def _get_pdf_page_count(pdf_path: Path) -> int:
     return get_pdf_page_count(pdf_path)
 
 
-def _convert_pdf_to_pages(pdf_path: Path, doc_name: str, images_dir: Path) -> list[dict[str, Any]]:
+def _convert_pdf_to_pages(
+    pdf_path: Path,
+    doc_name: str,
+    images_dir: Path,
+    kb_dir: Path | None = None,
+) -> list[dict[str, Any]]:
     from openkb.images import convert_pdf_to_pages
 
-    return convert_pdf_to_pages(pdf_path, doc_name, images_dir)
+    return convert_pdf_to_pages(pdf_path, doc_name, images_dir, kb_dir=kb_dir)
 
 
 def _write_long_doc_artifacts(
@@ -270,7 +275,7 @@ def index_long_document(pdf_path: Path, kb_dir: Path, doc_name: str | None = Non
                     "Cloud returned no pages for %s; falling back to local pymupdf", pdf_path.name
                 )
             all_pages = _normalize_page_content(
-                _convert_pdf_to_pages(pdf_path, source_name, images_dir)
+                _convert_pdf_to_pages(pdf_path, source_name, images_dir, kb_dir=kb_dir)
             )
 
         if not all_pages:

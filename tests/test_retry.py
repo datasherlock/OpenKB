@@ -95,3 +95,4 @@ async def test_acall_with_retry_recovers_after_rate_limits():
     res = await acall_with_retry(aflaky, initial_delay=0.01, max_retries=5)
     assert res == "async_success"
     assert attempts == 3
+

@@ -430,7 +430,9 @@ def sync_kb_bidirectional(
     return True, f"Bidirectional sync completed successfully (merged {len(merged_hashes)} documents)."
 
 
-def run_sync_hook(kb_dir: Path, action: str = "push") -> tuple[bool, str]:
+def run_sync_hook(
+    kb_dir: Path, action: str = "push", *, delete_unmatched: bool = False
+) -> tuple[bool, str]:
     """Execute pre-configured cloud_sync hook based on KB config.yaml.
 
     Safe: catches all exceptions and logs without breaking caller.
@@ -456,7 +458,8 @@ def run_sync_hook(kb_dir: Path, action: str = "push") -> tuple[bool, str]:
     if action == "push":
         if not cloud_sync.get("auto_push", True):
             return True, "auto_push is disabled."
-        ok, msg = sync_kb_push(kb_dir, bucket)
+        effective_delete = delete_unmatched or bool(cloud_sync.get("delete_unmatched", False))
+        ok, msg = sync_kb_push(kb_dir, bucket, delete_unmatched=effective_delete)
         if ok:
             try:
                 from openkb.log import append_log

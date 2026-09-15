@@ -70,6 +70,10 @@ def apply_litellm_patches() -> None:
     # Disable LiteLLM background telemetry to eliminate LoggingWorker timeout errors
     try:
         litellm.telemetry = False
+        if not hasattr(litellm, "num_retries") or litellm.num_retries is None or litellm.num_retries < 3:
+            litellm.num_retries = int(os.getenv("OPENKB_LLM_NUM_RETRIES", "5"))
+        if not hasattr(litellm, "request_timeout") or litellm.request_timeout is None:
+            litellm.request_timeout = float(os.getenv("OPENKB_LLM_TIMEOUT", "180"))
     except Exception:
         pass
 

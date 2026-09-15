@@ -499,6 +499,12 @@ def create_app() -> FastAPI:
                     "candidates": result.get("candidates", []),
                 },
             )
+        if status_value == "removed":
+            try:
+                from openkb.cloud_sync import run_sync_hook
+                await run_in_threadpool(run_sync_hook, kb_dir, "push", delete_unmatched=True)
+            except Exception as exc:
+                logger.warning("Post-remove cloud sync failed: %s", exc)
         return RemoveResponse(**result)
 
     @app.post("/api/v1/recompile", response_model=RecompileResponse)

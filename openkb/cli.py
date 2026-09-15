@@ -1901,6 +1901,11 @@ def remove(ctx, identifier, keep_raw, keep_empty, dry_run, yes):
         )
         return
 
+    try:
+        from openkb.cloud_sync import run_sync_hook
+        run_sync_hook(kb_dir, "push", delete_unmatched=True)
+    except Exception:
+        pass
     click.echo(f"  [OK] {result.name} removed from knowledge base.")
 
 

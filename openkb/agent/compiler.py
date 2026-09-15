@@ -38,6 +38,7 @@ from openkb.config import (
 )
 from openkb.lint import list_existing_wiki_targets, strip_ghost_wikilinks
 from openkb.locks import atomic_write_text
+from openkb.retry import acall_with_retry, call_with_retry
 from openkb.schema import INDEX_SEED, get_agents_md
 
 logger = logging.getLogger(__name__)
@@ -425,7 +426,13 @@ def _llm_call(
     spinner.start()
     t0 = time.time()
 
-    response = litellm.completion(model=model, messages=messages, **kwargs)
+    response = call_with_retry(
+        litellm.completion,
+        model=model,
+        messages=messages,
+        step_name=step_name,
+        **kwargs,
+    )
     content = response.choices[0].message.content or ""
     truncated = _warn_if_truncated(response, step_name, kwargs.get("max_tokens"))
 
@@ -466,7 +473,13 @@ async def _llm_call_async(
 
     t0 = time.time()
 
-    response = await litellm.acompletion(model=model, messages=messages, **kwargs)
+    response = await acall_with_retry(
+        litellm.acompletion,
+        model=model,
+        messages=messages,
+        step_name=step_name,
+        **kwargs,
+    )
     content = response.choices[0].message.content or ""
     truncated = _warn_if_truncated(response, step_name, kwargs.get("max_tokens"))
 

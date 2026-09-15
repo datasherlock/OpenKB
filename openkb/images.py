@@ -120,7 +120,14 @@ def transcribe_image_content(
         if os.getenv("VERTEXAI_LOCATION"):
             kwargs["vertex_location"] = os.getenv("VERTEXAI_LOCATION")
 
-        resp = litellm.completion(model=model, messages=messages, **kwargs)
+        from openkb.retry import call_with_retry
+        resp = call_with_retry(
+            litellm.completion,
+            model=model,
+            messages=messages,
+            step_name=f"describe-image {image_path.name}",
+            **kwargs,
+        )
         content = (resp.choices[0].message.content or "").strip()
         logger.info("Transcribed image %s (%d chars)", image_path.name, len(content))
         return content

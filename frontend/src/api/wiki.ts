@@ -22,6 +22,9 @@ export interface WikiDocument {
   type: string
   display_type: string
   pages: number | null
+  date?: string | null
+  tags?: string[] | null
+  snapshot?: boolean
 }
 
 /**

@@ -41,7 +41,14 @@ async def add_url_endpoint(
         logger.warning("Pre-add cloud sync failed: %s", exc)
 
     try:
-        fetched = await run_in_threadpool(fetch_url_to_raw, request.url, kb_dir)
+        fetched = await run_in_threadpool(
+            fetch_url_to_raw,
+            request.url,
+            kb_dir,
+            mode=request.mode,
+            date=request.date,
+            tags=request.tags,
+        )
     except Exception as exc:
         logger.exception("Failed to fetch URL %s: %s", request.url, exc)
         raise HTTPException(

@@ -241,6 +241,9 @@ def create_app() -> FastAPI:
     async def add_endpoint(
         kb: str = Form(...),
         stream: str = Form("true"),
+        mode: str = Form("update"),
+        date: str | None = Form(None),
+        tags: str | None = Form(None),
         files: list[UploadFile] = File(default=[]),
         _: None = Depends(require_write_permission),
     ) -> Any:
@@ -251,12 +254,19 @@ def create_app() -> FastAPI:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No files uploaded.",
             )
-        # Reserve unique raw paths under the lock so concurrent same-name
-        # uploads cannot race on _unique_raw_path and overwrite each other,
+        parsed_tags = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
+        # Reserve raw paths under the lock so concurrent same-name
+        # uploads cannot race on reservation,
         # then stream the bodies outside it so a large or slow upload does not
         # block other same-KB mutations (lint/recompile/other adds).
         async with _kb_mutation_lock(kb):
-            reserved = _reserve_add_uploads(resolved_kb_dir, files)
+            reserved = _reserve_add_uploads(
+                resolved_kb_dir,
+                files,
+                mode=mode,
+                date=date,
+                tags=parsed_tags,
+            )
         saved_uploads = await _write_add_uploads(reserved, files)
         if _parse_stream_form(stream):
             return StreamingResponse(

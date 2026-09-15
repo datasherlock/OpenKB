@@ -50,6 +50,7 @@ from openkb.config import (
 )
 from openkb.log import append_log
 from openkb.watch_service import WatchRegistry
+from openkb.metadata import autogenerate_metadata, derive_snapshot_filename, save_inbound_metadata
 
 UPLOAD_CHUNK_BYTES = 1024 * 1024
 MAX_UPLOAD_FILE_BYTES = int(os.environ.get("OPENKB_MAX_UPLOAD_FILE_BYTES", str(100 * 1024 * 1024)))
@@ -182,14 +183,16 @@ def _unique_raw_path(raw_dir: Path, filename: str) -> Path:
         counter += 1
 
 
-def _reserve_upload_path(raw_dir: Path, upload: UploadFile) -> tuple[Path, str]:
-    """Validate an upload's name/type and reserve a unique raw path for it.
-
-    Synchronous and fast: allocates via :func:`_unique_raw_path` and creates an
-    empty placeholder so a concurrent reservation sees the name as taken. The
-    caller holds the per-KB mutation lock for this step alone — never for the
-    (potentially slow) body transfer in :func:`_write_upload`.
-    """
+def _reserve_upload_path(
+    kb_dir: Path,
+    upload: UploadFile,
+    mode: str = "update",
+    date: str | None = None,
+    tags: list[str] | None = None,
+) -> tuple[Path, str]:
+    """Validate an upload's name/type and reserve a raw path for it (update or snapshot)."""
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
     original_name = _safe_upload_name(upload.filename)
     suffix = Path(original_name).suffix.lower()
     if suffix not in SUPPORTED_EXTENSIONS:
@@ -200,7 +203,21 @@ def _reserve_upload_path(raw_dir: Path, upload: UploadFile) -> tuple[Path, str]:
                 f"Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
             ),
         )
-    saved_path = _unique_raw_path(raw_dir, original_name)
+    eff_date, eff_tags = autogenerate_metadata(original_name, file_date=date, tags=tags)
+    if mode == "snapshot":
+        target_name = derive_snapshot_filename(original_name, eff_date, raw_dir)
+        saved_path = raw_dir / target_name
+    else:
+        saved_path = raw_dir / original_name
+
+    save_inbound_metadata(
+        kb_dir,
+        saved_path.name,
+        date=eff_date,
+        tags=eff_tags,
+        snapshot=(mode == "snapshot"),
+        mode=mode,
+    )
     saved_path.touch()
     return saved_path, original_name
 
@@ -265,20 +282,17 @@ def _model_payload(model: BaseModel) -> dict[str, Any]:
 def _reserve_add_uploads(
     kb_dir: Path,
     files: list[UploadFile],
+    mode: str = "update",
+    date: str | None = None,
+    tags: list[str] | None = None,
 ) -> list[tuple[Path, str]]:
-    """Reserve a unique raw path (with a placeholder) for each upload.
-
-    Fast and synchronous so the caller can hold the per-KB mutation lock for
-    this step alone: that makes :func:`_unique_raw_path`'s ``exists()`` check
-    race-free against concurrent same-name uploads without serializing the
-    body transfers that follow in :func:`_write_add_uploads`.
-    """
+    """Reserve a raw path for each upload (update or snapshot)."""
     raw_dir = kb_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
     reserved: list[tuple[Path, str]] = []
     try:
         for upload in files:
-            reserved.append(_reserve_upload_path(raw_dir, upload))
+            reserved.append(_reserve_upload_path(kb_dir, upload, mode=mode, date=date, tags=tags))
     except Exception:
         for saved_path, _ in reserved:
             saved_path.unlink(missing_ok=True)

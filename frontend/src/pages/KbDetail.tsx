@@ -6,7 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { FileText, Link2, Loader2, Pencil, Upload, RefreshCw, Settings2, Trash2, Circle, CheckCircle2, CircleSlash2, XCircle, X, BookOpen } from 'lucide-react'
 import { toast } from 'sonner'
 import { deletePage, editPage, getDocumentSource, getKbInventory, getPage, getPageLinks, type DocumentSource, type KbInventory, type WikiDocument } from '@/api/wiki'
-import { streamUpload, removeDocument, addUrl, type AddResult } from '@/api/maintenance'
+import { streamUpload, removeDocument, addUrl, type AddResult, type IngestOptions } from '@/api/maintenance'
 import { ApiError } from '@/api/client'
 import MarkdownView from '@/components/MarkdownView'
 import PageList from '@/components/PageList'
@@ -238,7 +238,7 @@ export default function KbDetail() {
   )
 
   const doUpload = useCallback(
-    async (files: File[]) => {
+    async (files: File[], options?: IngestOptions) => {
       if (files.length === 0 || uploading) return
       setUploading(true)
       // Seed one row per selected file so the UI shows the full set immediately,
@@ -276,6 +276,7 @@ export default function KbDetail() {
             }
           },
           controller.signal,
+          options,
         )
         // A stream-level `error` frame, or a stream that ends WITHOUT a `final`
         // summary, must not leave rows spinning forever — settle any still-
@@ -336,14 +337,14 @@ export default function KbDetail() {
   )
 
   const onAddUrl = useCallback(
-    async (url: string) => {
+    async (url: string, options?: IngestOptions) => {
       const trimmed = url.trim()
       if (!trimmed || uploading) return
       setUploading(true)
       const rowId = String(rowIdSeq.current++)
       setUploadFiles([{ id: rowId, name: trimmed, status: 'processing' as const }])
       try {
-        const res = await addUrl(id, trimmed)
+        const res = await addUrl(id, trimmed, options)
         const fileItem = res.files[0]
         const status = (fileItem?.status || 'added') as UploadStatus
         setUploadFiles([{ id: rowId, name: trimmed, status, message: fileItem?.message }])
@@ -1054,13 +1055,22 @@ function DocumentsPane({
   dragActive: boolean
   fileInputRef: RefObject<HTMLInputElement | null>
   onDragActiveChange: (active: boolean) => void
-  onUpload: (files: File[]) => void
-  onAddUrl: (url: string) => Promise<void>
+  onUpload: (files: File[], options?: IngestOptions) => void
+  onAddUrl: (url: string, options?: IngestOptions) => Promise<void>
   onRefresh: () => void
   onDelete: (identifier: string) => Promise<void>
 }) {
   const { t } = useTranslation(['kb', 'common'])
   const [urlInput, setUrlInput] = useState('')
+  const [ingestMode, setIngestMode] = useState<'update' | 'snapshot'>('update')
+  const [ingestDate, setIngestDate] = useState('')
+  const [ingestTags, setIngestTags] = useState('')
+
+  const currentOptions: IngestOptions = {
+    mode: ingestMode,
+    date: ingestDate.trim() || undefined,
+    tags: ingestTags.trim() ? ingestTags.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
+  }
   // Inline delete confirm: `confirmName` is the row awaiting confirmation;
   // `deletingName` is the row whose remove request is in flight.
   const [confirmName, setConfirmName] = useState<string | null>(null)
@@ -1140,6 +1150,71 @@ function DocumentsPane({
           {t('kb:upload.note')}
         </p>
 
+        {/* Ingestion Mode & Metadata Options */}
+        <div className="mt-4 mb-1 rounded-2xl border border-[hsl(var(--glass-border))] glass-2 p-3.5 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] font-semibold text-foreground">Import & Upload Options</span>
+              <span className="text-[11px] text-muted-foreground">(Applies to uploads and URL imports)</span>
+            </div>
+            {/* Segmented Mode Picker */}
+            <div className="inline-flex rounded-xl border border-[hsl(var(--glass-border))] p-0.5 bg-muted/40 text-[12px]">
+              <button
+                type="button"
+                onClick={() => setIngestMode('update')}
+                className={cn(
+                  'px-3 py-1 rounded-lg font-medium transition-all cursor-pointer',
+                  ingestMode === 'update'
+                    ? 'bg-background text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                In-Place Update
+              </button>
+              <button
+                type="button"
+                onClick={() => setIngestMode('snapshot')}
+                className={cn(
+                  'px-3 py-1 rounded-lg font-medium transition-all cursor-pointer',
+                  ingestMode === 'snapshot'
+                    ? 'bg-background text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                Snapshot (Dated Copy)
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-[hsl(var(--glass-border))]">
+            <div>
+              <label className="block text-[11.5px] font-medium text-muted-foreground mb-1">
+                Document Date <span className="font-normal opacity-75">(autogenerated if blank)</span>
+              </label>
+              <input
+                type="date"
+                value={ingestDate}
+                onChange={(e) => setIngestDate(e.target.value)}
+                disabled={uploading}
+                className="w-full rounded-xl border border-[hsl(var(--glass-border))] glass px-3 py-1.5 text-[12.5px] text-foreground focus:outline-none focus:ring-2 focus:ring-accent-brand/40"
+              />
+            </div>
+            <div>
+              <label className="block text-[11.5px] font-medium text-muted-foreground mb-1">
+                Tags <span className="font-normal opacity-75">(autogenerated if blank, comma-separated)</span>
+              </label>
+              <input
+                type="text"
+                value={ingestTags}
+                onChange={(e) => setIngestTags(e.target.value)}
+                placeholder="e.g. burndown, planning, standup"
+                disabled={uploading}
+                className="w-full rounded-xl border border-[hsl(var(--glass-border))] glass px-3 py-1.5 text-[12.5px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent-brand/40"
+              />
+            </div>
+          </div>
+        </div>
+
         {/* Upload dropzone (real /api/v1/add) */}
         <div
           onDragOver={(e) => {
@@ -1150,7 +1225,7 @@ function DocumentsPane({
           onDrop={(e) => {
             e.preventDefault()
             onDragActiveChange(false)
-            onUpload(Array.from(e.dataTransfer.files))
+            onUpload(Array.from(e.dataTransfer.files), currentOptions)
           }}
           onClick={() => !uploading && fileInputRef.current?.click()}
           className={cn(
@@ -1167,7 +1242,7 @@ function DocumentsPane({
             multiple
             className="hidden"
             onChange={(e) => {
-              onUpload(Array.from(e.target.files ?? []))
+              onUpload(Array.from(e.target.files ?? []), currentOptions)
               e.target.value = ''
             }}
           />
@@ -1196,7 +1271,7 @@ function DocumentsPane({
                 const trimmed = urlInput.trim()
                 if (trimmed && !uploading) {
                   setUrlInput('')
-                  void onAddUrl(trimmed)
+                  void onAddUrl(trimmed, currentOptions)
                 }
               }
             }}
@@ -1210,7 +1285,7 @@ function DocumentsPane({
               const trimmed = urlInput.trim()
               if (trimmed && !uploading) {
                 setUrlInput('')
-                void onAddUrl(trimmed)
+                void onAddUrl(trimmed, currentOptions)
               }
             }}
             disabled={!urlInput.trim() || uploading}
@@ -1303,9 +1378,27 @@ function DocumentsPane({
                 </span>
                 <div className="min-w-0">
                   <div className="text-[13.5px] font-medium text-foreground truncate">{d.name}</div>
-                  <div className="text-[12px] text-muted-foreground mt-0.5">
-                    {d.display_type}
-                    {d.pages != null && <> · {t('kb:docs.pages', { count: d.pages })}</>}
+                  <div className="text-[12px] text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    <span>{d.display_type}</span>
+                    {d.pages != null && <span>· {t('kb:docs.pages', { count: d.pages })}</span>}
+                    {d.date && (
+                      <span className="font-mono2 text-[10.5px] px-1.5 py-0.5 bg-muted rounded border border-[hsl(var(--glass-border))]">
+                        📅 {d.date}
+                      </span>
+                    )}
+                    {d.snapshot && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded border border-purple-500/20">
+                        Snapshot
+                      </span>
+                    )}
+                    {d.tags && d.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="text-[10.5px] px-1.5 py-0.5 bg-accent-brand/10 text-accent-brand rounded border border-accent-brand/20"
+                      >
+                        #{tag}
+                      </span>
+                    ))}
                   </div>
                 </div>
               </button>

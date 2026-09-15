@@ -125,6 +125,9 @@ class AddResponse(BaseModel):
 class AddUrlRequest(BaseModel):
     kb: str = Field(..., min_length=1)
     url: str = Field(..., min_length=1)
+    mode: Literal["update", "snapshot"] = "update"
+    date: str | None = None
+    tags: list[str] | None = None
 
 
 class KbRequest(BaseModel):
@@ -142,6 +145,9 @@ class DocumentItem(BaseModel):
     type: str
     display_type: str
     pages: int | None = None
+    date: str | None = None
+    tags: list[str] | None = None
+    snapshot: bool = False
 
 
 class ListResponse(BaseModel):

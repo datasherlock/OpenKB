@@ -25,6 +25,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from urllib.parse import unquote, urlparse
+from typing import Literal
+from openkb.metadata import autogenerate_metadata, derive_snapshot_filename, save_inbound_metadata
 
 import click
 
@@ -162,7 +164,14 @@ def _download_pdf_chunked(response, head_bytes: bytes, target: Path) -> None:
             fh.write(chunk)
 
 
-def _extract_html(url: str, raw_dir: Path) -> Path | None:
+def _extract_html(
+    url: str,
+    raw_dir: Path,
+    kb_dir: Path | None = None,
+    mode: Literal["update", "snapshot"] = "update",
+    date: str | None = None,
+    tags: list[str] | None = None,
+) -> Path | None:
     """Fetch the URL through trafilatura, extract the main content as
     Markdown, and write it to ``raw/<title-slug>.md``.
 
@@ -201,10 +210,28 @@ def _extract_html(url: str, raw_dir: Path) -> Path | None:
     metadata = trafilatura.extract_metadata(raw_html)
     title = (metadata.title if metadata else None) or url
     filename = _sanitize_filename(title, ".md")
-    # Pick a non-colliding name — two blog posts titled "Introduction"
-    # would otherwise overwrite each other in raw/ and leave the hash
-    # registry pointing at stale bytes.
-    target = _unique_path(raw_dir / filename)
+    source_date = metadata.date if metadata else None
+    eff_date, eff_tags = autogenerate_metadata(
+        filename,
+        file_date=date,
+        tags=tags,
+        source_modified_time=source_date,
+        mime_type="text/html",
+    )
+    if mode == "snapshot":
+        snapshot_name = derive_snapshot_filename(filename, eff_date, raw_dir)
+        target = raw_dir / snapshot_name
+    else:
+        target = raw_dir / filename
+    if kb_dir is not None:
+        save_inbound_metadata(
+            kb_dir,
+            target.name,
+            date=eff_date,
+            tags=eff_tags,
+            snapshot=(mode == "snapshot"),
+            mode=mode,
+        )
     target.write_text(markdown, encoding="utf-8")
     click.echo(
         f"  Extracted: {title!r}\n"
@@ -213,7 +240,13 @@ def _extract_html(url: str, raw_dir: Path) -> Path | None:
     return target
 
 
-def fetch_url_to_raw(url: str, kb_dir: Path) -> Path | None:
+def fetch_url_to_raw(
+    url: str,
+    kb_dir: Path,
+    mode: Literal["update", "snapshot"] = "update",
+    date: str | None = None,
+    tags: list[str] | None = None,
+) -> Path | None:
     """Fetch ``url`` into ``<kb>/raw/`` and return the local path.
 
     Routing is decided by URL type / HTTP ``Content-Type``:
@@ -230,7 +263,7 @@ def fetch_url_to_raw(url: str, kb_dir: Path) -> Path | None:
     from openkb.gdrive import is_gdrive_url, fetch_gdrive_file_to_raw
 
     if is_gdrive_url(url):
-        return fetch_gdrive_file_to_raw(url, kb_dir)
+        return fetch_gdrive_file_to_raw(url, kb_dir, mode=mode, file_date=date, tags=tags)
 
     raw_dir = kb_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -270,14 +303,32 @@ def fetch_url_to_raw(url: str, kb_dir: Path) -> Path | None:
                 final_url,
                 response.headers.get("Content-Disposition"),
             )
-            target = _unique_path(raw_dir / filename)
+            eff_date, eff_tags = autogenerate_metadata(
+                filename,
+                file_date=date,
+                tags=tags,
+                mime_type="application/pdf",
+            )
+            if mode == "snapshot":
+                snapshot_name = derive_snapshot_filename(filename, eff_date, raw_dir)
+                target = raw_dir / snapshot_name
+            else:
+                target = raw_dir / filename
+            save_inbound_metadata(
+                kb_dir,
+                target.name,
+                date=eff_date,
+                tags=eff_tags,
+                snapshot=(mode == "snapshot"),
+                mode=mode,
+            )
             _download_pdf_chunked(response, head_bytes, target)
             size_mb = target.stat().st_size / (1024 * 1024)
             click.echo(f"  Saved: raw/{target.name} ({size_mb:.1f} MB PDF)")
             return target
 
     if actual == "html":
-        return _extract_html(url, raw_dir)
+        return _extract_html(url, raw_dir, kb_dir=kb_dir, mode=mode, date=date, tags=tags)
 
     click.echo(
         f"  [ERROR] Unsupported content type {declared!r} for URL ingest. "

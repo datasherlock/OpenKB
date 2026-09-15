@@ -21,7 +21,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+from openkb.metadata import autogenerate_metadata, derive_snapshot_filename, save_inbound_metadata
 
 import click
 
@@ -161,7 +162,13 @@ def get_drive_credentials(kb_dir: Path | None = None, force_impersonation: bool 
         ) from exc
 
 
-def fetch_gdrive_file_to_raw(url_or_id: str, kb_dir: Path) -> Path | None:
+def fetch_gdrive_file_to_raw(
+    url_or_id: str,
+    kb_dir: Path,
+    mode: Literal["update", "snapshot"] = "update",
+    file_date: str | None = None,
+    tags: list[str] | None = None,
+) -> Path | None:
     """Download or export a Google Drive file into ``kb_dir / 'raw'``.
 
     Returns the Path to the saved local file, or None on failure.
@@ -193,7 +200,7 @@ def fetch_gdrive_file_to_raw(url_or_id: str, kb_dir: Path) -> Path | None:
     auth_header = {"Authorization": f"Bearer {creds.token}"}
 
     # Step 1: Retrieve metadata (supportsAllDrives=true is required for Shared / Team Drives)
-    meta_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?fields=id,name,mimeType&supportsAllDrives=true"
+    meta_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?fields=id,name,mimeType,modifiedTime&supportsAllDrives=true"
     meta_req = urllib.request.Request(meta_url, headers=auth_header)
     try:
         with urllib.request.urlopen(meta_req, timeout=TIMEOUT_SECONDS) as resp:
@@ -241,7 +248,28 @@ def fetch_gdrive_file_to_raw(url_or_id: str, kb_dir: Path) -> Path | None:
             ext = ".pdf" if mime_type == "application/pdf" else ""
 
     sanitized_name = _sanitize_filename(doc_name, ext)
-    target = _unique_path(raw_dir / sanitized_name)
+    eff_date, eff_tags = autogenerate_metadata(
+        sanitized_name,
+        file_date=file_date,
+        tags=tags,
+        source_modified_time=meta.get("modifiedTime"),
+        mime_type=mime_type,
+    )
+
+    if mode == "snapshot":
+        snapshot_name = derive_snapshot_filename(sanitized_name, eff_date, raw_dir)
+        target = raw_dir / snapshot_name
+    else:
+        target = raw_dir / sanitized_name
+
+    save_inbound_metadata(
+        kb_dir,
+        target.name,
+        date=eff_date,
+        tags=eff_tags,
+        snapshot=(mode == "snapshot"),
+        mode=mode,
+    )
 
     # Step 3: Stream download
     dl_req = urllib.request.Request(download_url, headers=auth_header)

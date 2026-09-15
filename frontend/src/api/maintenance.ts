@@ -74,15 +74,25 @@ export type UploadEvent =
  * the in-flight `fetch`/`reader.read()` with an `AbortError` that propagates out
  * (mirrors `apiStream`/`runRecompile`), so navigating away mid-upload cancels it.
  */
+export interface IngestOptions {
+  mode?: 'update' | 'snapshot'
+  date?: string
+  tags?: string[]
+}
+
 export async function streamUpload(
   kb: string,
   files: File[],
   onEvent: (ev: UploadEvent) => void,
   signal?: AbortSignal,
+  options?: IngestOptions,
 ): Promise<void> {
   const form = new FormData()
   form.append("kb", kb)
   form.append("stream", "true")
+  if (options?.mode) form.append("mode", options.mode)
+  if (options?.date) form.append("date", options.date)
+  if (options?.tags && options.tags.length > 0) form.append("tags", options.tags.join(","))
   files.forEach((f) => form.append("files", f))
   const token = getToken()
   const res = await fetch(getApiBase().replace(/\/$/, "") + "/api/v1/add", {
@@ -174,8 +184,16 @@ export function removeDocument(kb: string, identifier: string): Promise<RemoveRe
   return apiFetch<RemoveResult>("/api/v1/remove", { body: { kb, identifier } })
 }
 
-export function addUrl(kb: string, url: string): Promise<AddResult> {
-  return apiFetch<AddResult>("/api/v1/add-url", { body: { kb, url } })
+export function addUrl(kb: string, url: string, options?: IngestOptions): Promise<AddResult> {
+  return apiFetch<AddResult>("/api/v1/add-url", {
+    body: {
+      kb,
+      url,
+      mode: options?.mode || "update",
+      date: options?.date || null,
+      tags: options?.tags || null,
+    },
+  })
 }
 
 export function watchStart(kb: string, debounce?: number): Promise<WatchStatus> {

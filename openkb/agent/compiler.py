@@ -944,7 +944,14 @@ def _remove_section_entry(lines: list[str], heading: str, link: str) -> bool:
 
 
 def _write_summary(
-    wiki_dir: Path, doc_name: str, summary: str, doc_type: str = "short", description: str = ""
+    wiki_dir: Path,
+    doc_name: str,
+    summary: str,
+    doc_type: str = "short",
+    description: str = "",
+    date: str | None = None,
+    tags: list[str] | None = None,
+    snapshot: bool = False,
 ) -> None:
     """Write summary page with frontmatter."""
     parts = frontmatter.split(summary)
@@ -958,6 +965,14 @@ def _write_summary(
     if description:
         fm_lines.append(_yaml_kv_line("description", description))
     fm_lines.append(f"doc_type: {doc_type}")
+    if date:
+        fm_lines.append(_yaml_kv_line("date", date))
+    if tags:
+        fm_lines.append("tags:")
+        for t in tags:
+            fm_lines.append(f"  - {_yaml_escape_scalar(t)}")
+    if snapshot:
+        fm_lines.append("snapshot: true")
     fm_lines.append(_yaml_kv_line("full_text", f"sources/{doc_name}.{ext}"))
     fm_block = "---\n" + "\n".join(fm_lines) + "\n---\n\n"
     atomic_write_text(summaries_dir / f"{doc_name}.md", fm_block + summary)
@@ -1610,6 +1625,9 @@ async def _compile_concepts(
     rewrite_summary: bool = False,
     entity_types: list[str] | None = None,
     bundle=None,
+    date: str | None = None,
+    tags: list[str] | None = None,
+    snapshot: bool = False,
 ) -> None:
     """Shared Steps 2-4: concepts plan → generate/update → index.
 
@@ -1675,7 +1693,7 @@ async def _compile_concepts(
                 doc_name,
                 ghosts[:5],
             )
-        _write_summary(wiki_dir, doc_name, cleaned, description=doc_brief)
+        _write_summary(wiki_dir, doc_name, cleaned, description=doc_brief, doc_type=doc_type, date=date, tags=tags, snapshot=snapshot)
 
     try:
         parsed = _parse_json(plan_raw)
@@ -2156,7 +2174,7 @@ async def _compile_concepts(
                     doc_name,
                     fallback_ghosts[:5],
                 )
-        _write_summary(wiki_dir, doc_name, final_summary, description=doc_brief)
+        _write_summary(wiki_dir, doc_name, final_summary, description=doc_brief, doc_type=doc_type, date=date, tags=tags, snapshot=snapshot)
 
     # --- Write concept pages to disk ---
     for name, page_content, is_update, brief in pending_writes:
@@ -2215,6 +2233,9 @@ async def compile_short_doc(
     model: str,
     max_concurrency: int = DEFAULT_COMPILE_CONCURRENCY,
     bundle=None,
+    date: str | None = None,
+    tags: list[str] | None = None,
+    snapshot: bool = False,
 ) -> None:
     """Compile a short document using a multi-step LLM pipeline with caching.
 
@@ -2287,6 +2308,9 @@ async def compile_short_doc(
             rewrite_summary=True,
             entity_types=entity_types,
             bundle=bundle,
+            date=date,
+            tags=tags,
+            snapshot=snapshot,
         )
     finally:
         # Close per-loop litellm async clients before asyncio.run tears this
@@ -2303,6 +2327,9 @@ async def compile_long_doc(
     doc_description: str = "",
     max_concurrency: int = DEFAULT_COMPILE_CONCURRENCY,
     bundle=None,
+    date: str | None = None,
+    tags: list[str] | None = None,
+    snapshot: bool = False,
 ) -> None:
     """Compile a long (PageIndex) document's concepts and index.
 
@@ -2328,6 +2355,16 @@ async def compile_long_doc(
         if doc_description:
             fm_block = _set_fm_line(fm_block, "description", doc_description)
         fm_block = _set_fm_line(fm_block, "type", "Summary")
+        if date:
+            fm_block = _set_fm_line(fm_block, "date", date)
+        if snapshot:
+            fm_block = _set_fm_line(fm_block, "snapshot", "true")
+        if tags:
+            tag_lines = "\ntags:\n" + "\n".join(f"  - {_yaml_escape_scalar(t)}" for t in tags)
+            if "\ntags:" in fm_block:
+                pass
+            else:
+                fm_block = fm_block.rstrip() + tag_lines + "\n"
         updated = fm_block + body
         if updated != summary_content:
             summary_content = updated

@@ -2427,7 +2427,7 @@ async def iter_recompile(
 @click.option("--push", is_flag=True, default=False, help="Push local KB to Google Cloud Storage bucket.")
 @click.option("--pull", is_flag=True, default=False, help="Pull remote GCS bucket into local KB.")
 @click.option("--dry-run", is_flag=True, default=False, help="Preview sync actions without transferring data.")
-@click.option("--delete", is_flag=True, default=False, help="Delete unmatched destination objects.")
+@click.option("--delete", "--delete-unmatched", "delete", is_flag=True, default=False, help="Delete unmatched destination objects.")
 @click.pass_context
 def sync(ctx, push, pull, dry_run, delete):
     """Synchronize knowledge base with configured Google Cloud Storage bucket."""

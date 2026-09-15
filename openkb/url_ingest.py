@@ -222,7 +222,7 @@ def _extract_html(
         snapshot_name = derive_snapshot_filename(filename, eff_date, raw_dir)
         target = raw_dir / snapshot_name
     else:
-        target = raw_dir / filename
+        target = _unique_path(raw_dir / filename)
     if kb_dir is not None:
         save_inbound_metadata(
             kb_dir,
@@ -313,7 +313,7 @@ def fetch_url_to_raw(
                 snapshot_name = derive_snapshot_filename(filename, eff_date, raw_dir)
                 target = raw_dir / snapshot_name
             else:
-                target = raw_dir / filename
+                target = _unique_path(raw_dir / filename)
             save_inbound_metadata(
                 kb_dir,
                 target.name,

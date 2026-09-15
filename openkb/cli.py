@@ -1704,6 +1704,11 @@ def _execute_remove_plan(
     if plan.raw_path is not None:
         plan.raw_path.unlink(missing_ok=True)
     append_log(wiki_dir, "remove", name)
+    try:
+        from openkb.cloud_sync import run_sync_hook
+        run_sync_hook(kb_dir, "push", delete_unmatched=True)
+    except Exception:
+        pass
     return RemoveResult(
         status="removed",
         name=name,
@@ -1901,11 +1906,6 @@ def remove(ctx, identifier, keep_raw, keep_empty, dry_run, yes):
         )
         return
 
-    try:
-        from openkb.cloud_sync import run_sync_hook
-        run_sync_hook(kb_dir, "push", delete_unmatched=True)
-    except Exception:
-        pass
     click.echo(f"  [OK] {result.name} removed from knowledge base.")
 
 

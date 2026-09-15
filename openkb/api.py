@@ -497,6 +497,8 @@ def create_app() -> FastAPI:
                 detail={
                     "message": "Identifier matches multiple documents.",
                     "candidates": result.get("candidates", []),
+                },
+            )
         return RemoveResponse(**result)
 
     @app.post("/api/v1/recompile", response_model=RecompileResponse)

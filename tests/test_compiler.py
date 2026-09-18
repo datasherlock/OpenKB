@@ -261,6 +261,37 @@ class TestWriteSummary:
         assert 'type: "Summary"' in text
         assert "description:" not in text
 
+    def test_writes_date_tags_and_snapshot(self, tmp_path):
+        wiki = tmp_path / "wiki"
+        wiki.mkdir()
+        _write_summary(
+            wiki,
+            "burndown-doc",
+            "# Summary\n\nContent.",
+            description="A burndown doc.",
+            date="2026-09-18",
+            tags=["spreadsheet", "burndown", "wave: 2", 'quoted "tag"'],
+            snapshot=True,
+        )
+        text = (wiki / "summaries" / "burndown-doc.md").read_text()
+        assert 'type: "Summary"' in text
+        assert 'date: "2026-09-18"' in text
+        assert "snapshot: true" in text
+        assert "tags:" in text
+        assert '  - "spreadsheet"' in text
+        assert '  - "burndown"' in text
+        assert '  - "wave: 2"' in text
+        assert '  - "quoted \\"tag\\""' in text
+
+        # Verify frontmatter parses cleanly
+        import openkb.frontmatter as fm
+        parsed = fm.parse(text)
+        assert parsed["type"] == "Summary"
+        assert parsed["date"] == "2026-09-18"
+        assert parsed["snapshot"] is True
+        assert parsed["tags"] == ["spreadsheet", "burndown", "wave: 2", 'quoted "tag"']
+
+
 
 class TestWriteConcept:
     def test_new_concept_with_brief(self, tmp_path):

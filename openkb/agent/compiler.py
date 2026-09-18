@@ -956,6 +956,12 @@ def _remove_section_entry(lines: list[str], heading: str, link: str) -> bool:
     return False
 
 
+_yaml_kv_line = frontmatter.kv_line
+_yaml_list_line = frontmatter.list_line
+_yaml_escape_scalar = frontmatter.escape_scalar
+_parse_yaml_list_value = frontmatter.parse_list_value
+
+
 def _write_summary(
     wiki_dir: Path,
     doc_name: str,
@@ -999,11 +1005,6 @@ def _sanitize_concept_name(name: str) -> str:
     name = unicodedata.normalize("NFKC", name)
     sanitized = _SAFE_NAME_RE.sub("-", name).strip("-")
     return sanitized or "unnamed-concept"
-
-
-_yaml_kv_line = frontmatter.kv_line
-_yaml_list_line = frontmatter.list_line
-_parse_yaml_list_value = frontmatter.parse_list_value
 
 
 def _write_concept(
@@ -2373,11 +2374,15 @@ async def compile_long_doc(
         if snapshot:
             fm_block = _set_fm_line(fm_block, "snapshot", "true")
         if tags:
-            tag_lines = "\ntags:\n" + "\n".join(f"  - {_yaml_escape_scalar(t)}" for t in tags)
-            if "\ntags:" in fm_block:
+            if re.search(r"^tags:", fm_block, flags=re.MULTILINE):
                 pass
             else:
-                fm_block = fm_block.rstrip() + tag_lines + "\n"
+                tag_lines = "tags:\n" + "\n".join(f"  - {_yaml_escape_scalar(t)}" for t in tags)
+                close_idx = fm_block.rfind("\n---")
+                if close_idx != -1:
+                    fm_block = fm_block[:close_idx] + "\n" + tag_lines + fm_block[close_idx:]
+                else:
+                    fm_block = fm_block.replace("---\n", f"---\n{tag_lines}\n", 1)
         updated = fm_block + body
         if updated != summary_content:
             summary_content = updated

@@ -30,6 +30,12 @@ def list_line(key: str, items) -> str:
     return f"{key}: {json.dumps(list(items), ensure_ascii=False)}"
 
 
+def escape_scalar(value: Any) -> str:
+    """Render a scalar value with JSON-quoting (always single-line, safe YAML)."""
+    return json.dumps(str(value), ensure_ascii=False)
+
+
+
 def block(lines: list[str]) -> str:
     """Assemble a complete frontmatter block (with delimiters + trailing blank)."""
     return "---\n" + "\n".join(lines) + "\n---\n\n"
